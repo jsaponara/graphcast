@@ -18,32 +18,36 @@ from __future__ import print_function
 import re
 from datetime import datetime as dt,timedelta
 from time import mktime
-from itertools import count, groupby
+from itertools import groupby
 from collections import defaultdict
 
 import attr
 
-from gcst.util import missing, Frame, NullFrame, isOdd, minmax, classifyRange
+from gcst.util import missing, Frame, isOdd, minmax, classifyRange
 from gcst.readFcst import getFcstData
-from gcst.appinfo import appname,makepath
+from gcst.writeSvg import bargraph, coordsToPath
+from gcst.appinfo import appname, makepath as makeAppPath
 
 cacheData = False  # see todo's
 debug=False
 
-appcachedir=makepath('cache/%s'%(appname))
+appcachedir=makeAppPath('cache/%s'%(appname))
 
 # svg template for a single 12hr block
 #    template has slots for: cloudclip precipclip precippct precipamt temppath templo temphi
 #    where cloud=cloudiness, precip=precipitation, temp=temperature
 #    and *clip is just points [pairs of ints] defining a polygon,
 #    and *path is M x y L x y x y...  [M=moveto, L=lineto]
+# foldedOrUnfolded: blocks can be full size [unfolded] or compact [folded] or marginal ['z']
+#    marginal blocks dont respond to user clicks,
+#    whereas other blocks toggle between folded and unfolded when clicked.
 # todo accept text positions and maybe sizes as well
 # odd: why doesnt rect work for background color?  instead it covers everything no matter if it's first or last
 #      eg: more cross-browser solution currently would be to stick a <rect> element with width and height of 100% and fill="red" as the first child of the <svg> element  http://stackoverflow.com/questions/11293026/default-background-color-of-svg-root-element
 #      <rect width=40%% height=40%% style="fill:#36a3e4">
 #      instead using path
 svgtmpl='''
-    <svg id='%(iblock)d' class='%(nightorday)s %(foldedorunfolded)s' width=%(svgwidth)d height=%(svgheight)d viewBox="0 0 %(blockwidth)d 100" preserveAspectRatio="none">
+    <svg id='%(iblock)d' class='%(nightorday)s %(foldedOrUnfolded)s' width=%(svgwidth)d height=%(svgheight)d viewBox="0 0 %(blockwidth)d 100" preserveAspectRatio="none">
         <desc>background color</desc>
         <path d='M %(halfwidth).0f 0 L %(halfwidth).0f 100 '
             fill='none' stroke-width=%(svgwidth)d stroke=%(darkatnight)s/>
@@ -125,13 +129,9 @@ maxPrecipAmt=float(I.torrent)
 def fcstgfx(location):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']
         for each 12hour day and night, compute two blocks, folded and unfolded
-        blkdataraw is arrays of the raw data
-        blkdataprop ["properties"] is arrays of the data transformed to an intermediate coordinate space
-        blkdatapixels is arrays of the data transformed to the svg coordinate space
     '''
     data, startTimes, slots = getFcstData(location, cacheData)
 
-    ndivs=11
     nightwidthfactor=0.5  # nights are half the width of days [unfolded; folded, they are the same width]
     fullblockwidth=100    # in pixels
 
@@ -183,7 +183,14 @@ def fcstgfx(location):
         if debug: print('len(ihours),blockwidth',len(ihours),blockwidth)
         if not isdaytime:
             blockwidth*=nightwidthfactor
-        # blk means 12hr block
+        '''
+            blk means 12hr block
+            blkdataraw holds arrays of the raw data
+            blkdataprop holds arrays of the data
+               transformed to a 0-to-1 coordinate space ['prop' is proportion]
+            blkdatapixels is arrays of the data
+               transformed to the svg [pixel] coordinate space
+        '''
         blkdataraw=Dataset(
             x=list(ihours),  # convert from tuple
             # extract data for this 12hr block
@@ -197,103 +204,22 @@ def fcstgfx(location):
         # bug: data array may end in a run of missing values, so padding w/ zeroes wont result in a vertical drop cuz xs will advance from last number to first missingval.
         blkdataraw.cloud=[0]+blkdataraw.cloud+[0]
         blkdataprop=Dataset(
-            #x=[(ihr+0.5)/12 for ihr in blkdataraw.x],  # this leaves gaps at start,end of block
-            # BUG?? if len(ihours)==1 then divideByZero here; also /tempRange here, divisions elsewhere?
-            # todo is '.5' reasonable default value for x?
-            x=[(ihr-ihours[0])/float(len(ihours)-1) if len(ihours)>1 else .5 for ihr in blkdataraw.x],  # '-1' causes data to jump at start,end of block
-            cloud=[pct if pct is None else pct/100. for pct in blkdataraw.cloud],
-            precipChance=[pct if pct is None else pct/100. for pct in blkdataraw.precipChance],
-            precipAmt=[classifyPrecipAmt(amt)/maxPrecipAmt for amt in blkdataraw.precipAmt], 
-            temp=[temp if temp is None else (temp-minTemp)/tempRange for temp in blkdataraw.temp],
+            # bug? if len(ihours)==1 then divideByZero here; also /tempRange here, divisions elsewhere?
+            x=[(ihr-ihours[0])/float(len(ihours)-1) if len(ihours)>1 else .5
+                # [(ihr+0.5)/12 for ...  # this leaves gaps at start,end of block
+                # todo is '.5' reasonable default value for x?
+                # '-1' causes data to jump at start,end of block
+                for ihr in blkdataraw.x],
+            cloud=[pct if pct is None else pct/100.
+                for pct in blkdataraw.cloud],
+            precipChance=[pct if pct is None else pct/100.
+                for pct in blkdataraw.precipChance],
+            precipAmt=[classifyPrecipAmt(amt)/maxPrecipAmt
+                for amt in blkdataraw.precipAmt], 
+            temp=[temp if temp is None else (temp-minTemp)/tempRange
+                for temp in blkdataraw.temp],
             weather=None
             )
-        #if blkdataprop.precipAmt[0]: print('prop.precipAmt',blkdataprop.precipAmt)
-        #print(ihours,blkdataprop.x)
-        def makepath(xys,frame=None,closePath=False):
-            if frame:
-                xform=frame
-            else:
-                xform=NullFrame()
-            pathCloser=' z' if closePath else ''
-            x,y=next(xys)
-            x,y=xform(x,y)
-            path0='M %f %f '%(round(x,1),round(y,1))
-            path1='  '.join(
-                ' '.join((
-                    str(round(xform.xtransform(x),1)),
-                    str(round(xform.ytransform(y),1))
-                    )) for x,y in xys)
-            if path1:
-                path=path0+'L '+path1+pathCloser
-            else:
-                path=None  # todo somehow mark the single point we M'd to in path0
-            return path
-        def bargraph(frame,xs,ys,tipsz,ndivs=ndivs,**kwargs):
-            locals().update(kwargs)
-            if len(ys)==2+len(xs):
-                ys=ys[1:-1]
-            dx=xs[1]-xs[0] if len(xs)>1 else 1. # todo assuming gaps are all equal
-            bars=[]
-            #for x,y,tip in zip(xs,ys,tips):
-            for key,grp in groupby(zip(count(),xs,ys,tipsz),lambda ixyt:(ixyt[2],ixyt[3])):
-                #print(333,key,list(grp))
-                i0,x0,y,tips=next(grp)
-                theRest=list(grp)
-                if theRest:
-                    iN,xN,yN,tipsN=theRest[-1]
-                    xN+=dx
-                else:
-                    iN=i0
-                    xN=x0+dx
-                path=makepath(iter(((x0,0),(x0,y),(xN,y),(xN,0))),frame,closePath=True)
-                #x=x0
-                #x0,y0=frame(x,0)
-                #upperleft='x=%f y=%f '%(round(x0,1),round(y0,1))
-                #x1,y1=frame(x+dx,0)
-                #dims='width=%f height=%f '%(round(x1-x0,1),round(y1-y0,1))
-                #bars.append('<rect '+upperleft+dims+"title='"+str(tip)+"' fill='none' stroke='black' stroke-width=1 />")
-                #bars.append('<image xlink:href="rain.png" '+upperleft+dims+"title='"+str(tip)+"' />")
-                top=frame.y
-                nbars=1+iN-i0
-                if nbars>ndivs:
-                    nbars=ndivs
-                weatherImgs='rain snow'.split()
-                for tip in tips:
-                    if tip in weatherImgs:
-                        img=tip
-                        break
-                else:
-                    img='rain'
-                tip=' &amp; '.join(tips)
-                frx0=frame.xtransform(x0)
-                # 100 rather than frame.width because the imgs were gen'd (in chopimg.py) at width=100
-                #   using a different value (eg for night blocks whose width==25) causes strange effects as svg tries to maintain constant aspectratio
-                #   but 25-px-wide blocks will now have same problem as 100px blocks did--the imgs will overflow the bar and obscure adjacent bars (eg rain will obscure snow)
-                #bargrpwidth=nbars*dx*frame.width
-                bargrpwidth=nbars*(100/float(ndivs))
-                bars.append('''
-                    <clipPath id="precip%(svgid)s%(i0)d" >
-                    <path d="%(path)s" /> </clipPath>
-                    <image title="%(tip)s" xlink:href="/static/gcst/img/%(img)s%(nbars)d_of_%(ndivs)d.png" x=%(frx0).1f y=%(top).1f width=%(bargrpwidth).1f height=33 clip-path="url(#precip%(svgid)s%(i0)d)" />\n'''.strip()%locals())
-            #from pprint import pprint as pp; pp(bars)
-            return '\n\t\t'.join(bars)
-        def coordsToPath(xs,ys,closePath=False):
-            # interleave and round x,y coords and convert to string
-            pathSegs=[]
-            if len(ys)==2+len(xs):
-                # pad xs to match *clip (as opposed to *path) datasets w/ zero at both ends
-                xs=[xs[0]]+xs+[xs[-1]]
-                closePath=True
-            for haveData,grp in groupby(zip(xs,ys),lambda x:x[1] is not missing):
-                path=''
-                pathCloser=' z' if closePath else ''
-                if haveData:
-                    path1=makepath(grp,closePath=closePath)
-                    if path1:
-                        pathSegs.append(path1)
-                else:
-                    pass # todo also return path around the missing data segments (ie not haveData) for clipping out the eg sky bkgd
-            return '  '.join(pathSegs)
         def precipTotToString(amts):
             total=sum([y for y in blkdataraw.precipAmt if y is not missing])
             roundedtotal=round(total,1)
@@ -302,11 +228,10 @@ def fcstgfx(location):
             else:
                 return total,str(roundedtotal)
         minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
-        # foldedorunfolded is merely initial state of block--block iscompact could be True or False
-        #foldedorunfolded='z' if blockwidth<30 else 'unfolded0' if iblock<4 else 'folded0'
-        foldedorunfolded='z' if blockwidth<30 else 'folded0'
+        # foldedOrUnfolded is merely initial state of block--block iscompact could be True or False
+        foldedOrUnfolded='z' if blockwidth<30 else 'folded0'
         iscompact=False
-        svgid='%d%s'%(isvg,foldedorunfolded[0])
+        svgid='%d%s'%(isvg,foldedOrUnfolded[0])
         def computeSvg(**d):
             blockwidth=d['blockwidth']
             isvg=d['isvg']
@@ -318,8 +243,8 @@ def fcstgfx(location):
             minTempBlock=str(d['minTempBlock'])+r'&deg;' if d['minTempBlock'] and knowMinTemp else ''
             maxTempBlock=str(d['maxTempBlock'])+r'&deg;' if d['maxTempBlock'] and knowMaxTemp else ''
             blkdataraw=d['blkdataraw']
-            foldedorunfolded=d['foldedorunfolded']
-            if debug: print('blockwidth,isdaytime,foldedorun',blockwidth,isdaytime,foldedorunfolded)
+            foldedOrUnfolded=d['foldedOrUnfolded']
+            if debug: print('blockwidth,isdaytime,foldedorun',blockwidth,isdaytime,foldedOrUnfolded)
             width,height=blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
             blkdatapixels=Dataset(
                 x=[width*x for x in blkdataprop.x],
@@ -335,7 +260,7 @@ def fcstgfx(location):
             midframe=Frame(x=0,y=midpane*height,width=width,height=height)
             #print(blkdataprop.x)
             #print(blkdataprop.precipAmt)
-            svgid='%d%s'%(isvg,foldedorunfolded[0])
+            svgid='%d%s'%(isvg,foldedOrUnfolded[0])
             totalprecip,totalprecipAsStr=precipTotToString(blkdataraw.precipAmt)
             maxPrecipChance=max(blkdataraw.precipChance)
             preciptextcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none'
@@ -373,7 +298,7 @@ def fcstgfx(location):
                 debugInfo='blockwidth==%d fullblockwidth==%d'%(blockwidth,fullblockwidth) if debug else '',
                 darkatnight='"#eee"' if not isdaytime else '"none"',
                 minTempShift=0,
-                maxTempShift=11 if foldedorunfolded=='unfolded0' else 60,
+                maxTempShift=11 if foldedOrUnfolded=='unfolded0' else 60,
                 hitempcolor='#c44' if isdaytime else 'none',
                 lotempcolor='blue' if isdaytime else 'none',
                 cloudtip='%%cloudiness: %s'%(str(blkdataraw.cloud[1:-1])),
@@ -383,19 +308,19 @@ def fcstgfx(location):
                 blockx=xpixelsaccum,
                 iblock=iblock,
                 nightorday='day' if isdaytime else 'night',
-                foldedorunfolded=foldedorunfolded,
+                foldedOrUnfolded=foldedOrUnfolded,
                 )
-            #print(today,blkdatasvg['nightorday'],foldedorunfolded,blkdatasvg['oclockcolor'])
+            #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
             return blkdatasvg
         blkdatasvg=computeSvg(**locals())
         #print(blkdatasvg['precipamt'])
         xpixelsaccum+=blockwidth
         svgs.append(svgtmpl % blkdatasvg)
-        if blockwidth>=30:  # ie foldedorunfolded!='z'
+        if blockwidth>=30:  # ie foldedOrUnfolded!='z'
             iscompact=True
-            # toggle foldedorunfolded state
-            foldedorunfolded='folded0' if foldedorunfolded=='unfolded0' else 'unfolded0'
-            svgid='%d%s'%(isvg,foldedorunfolded[0])
+            # toggle foldedOrUnfolded state
+            foldedOrUnfolded='folded0' if foldedOrUnfolded=='unfolded0' else 'unfolded0'
+            svgid='%d%s'%(isvg,foldedOrUnfolded[0])
             blockwidth=svgwidth=25  # smaller for nights?
             #oclockcolor='#ddd' if isdaytime and not iscompact else 'none'
             oclockcolor='none'

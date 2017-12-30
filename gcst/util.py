@@ -27,6 +27,11 @@ def classifyRange(amt,classes):
     return classes[-1][1]
 
 class Frame:
+    '''
+    transforms given point [via __call__] or
+    coordinate [via xtransform or ytransform] into the
+    frame defined by ?upperLeft corner, width, and height [in __init__]
+    '''
     def __init__(self,x,y,width,height):
         self.x=float(x)
         self.y=float(y)
@@ -35,13 +40,16 @@ class Frame:
     def __call__(self,x,y):
         # assumes normalized inputs (ie, in the interval 0..1)
         #print(self.x,self.y,self.width,self.height,'--',x,y,'--',self.x+self.width*x,self.y+(1.0-y)*self.height)
+        assert 0<=x<=1 and 0<=y<=1, 'x,y=%s,%s' % (x, y)
         return self.x+self.width*x,self.y+(1.0-y)*self.height
     def xtransform(self,x):
+        #assert 0<=x<=1, 'x=%s' % x  # got x==1.5, via bargraph/makepath[line20], why?
         return self.x+self.width*x
     def ytransform(self,y):
+        assert 0<=y<=1, 'y=%s' % y
         return self.y+(1.0-y)*self.height
 
-class NullFrame:
+class UnitFrame:
     # if data are already in screen units, no need to transform
     def __init__(self):
         pass

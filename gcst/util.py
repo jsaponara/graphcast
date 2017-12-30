@@ -1,4 +1,6 @@
 
+debug=False
+
 def isEven(k): return k/2.==int(k/2.)
 def isOdd(k): return not isEven(k)
 
@@ -30,7 +32,7 @@ class Frame:
     '''
     transforms given point [via __call__] or
     coordinate [via xtransform or ytransform] into the
-    frame defined by ?upperLeft corner, width, and height [in __init__]
+    frame defined by upperLeft corner [x,y], width, and height [in __init__]
     '''
     def __init__(self,x,y,width,height):
         self.x=float(x)

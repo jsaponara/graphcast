@@ -146,7 +146,6 @@ def fcstgfx(location):
                 for temp in blkdataraw.temp],
             weather=None
             )
-        minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
         # foldedOrUnfolded is merely initial state of block--block iscompact could be True or False
         foldedOrUnfolded='z' if blockwidth<30 else 'folded0'
         iscompact=False

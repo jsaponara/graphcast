@@ -2,7 +2,7 @@
 import re
 from itertools import count, groupby
 
-from gcst.util import missing, Frame, UnitFrame, debug, Dataset
+from gcst.util import minmax, missing, Frame, UnitFrame, debug, Dataset
 
 ndivs=11
 
@@ -162,6 +162,22 @@ def sumPrecipToString(amts):
     else:
         return total,str(roundedtotal)
 
+def tempText(inn, out):
+    d=inn
+    isvg=d['isvg']
+    blkdataraw=d['blkdataraw']
+    knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
+    knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
+    minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
+    out.update(dict(
+        minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
+        maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
+    ))
+    return out
+def tempPath(d, dataset, pane, height):
+    blkdataprop=d['blkdataprop']
+    dataset.temp = [pane*height+height*(1-y) for y in blkdataprop.temp]
+
 def computeSvg(**d):
     blockwidth=d['blockwidth']
     isvg=d['isvg']
@@ -173,10 +189,7 @@ def computeSvg(**d):
     fullblockwidth=d['fullblockwidth']
     xpixelsaccum=d['xpixelsaccum']
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
-    knowMinTemp=(isvg> 0 or len(d['blkdataraw'].x)==12)
-    knowMaxTemp=(isvg<14 or len(d['blkdataraw'].x)>8)
-    minTempBlock=str(d['minTempBlock'])+r'&deg;' if d['minTempBlock'] and knowMinTemp else ''
-    maxTempBlock=str(d['maxTempBlock'])+r'&deg;' if d['maxTempBlock'] and knowMaxTemp else ''
+    dataDict = tempText(d, {})
     blkdataraw=d['blkdataraw']
     blkdataprop=d['blkdataprop']
     foldedOrUnfolded=d['foldedOrUnfolded']
@@ -188,9 +201,9 @@ def computeSvg(**d):
         cloud=[toppane*height+height*(1-y) for y in blkdataprop.cloud],
         precipChance=[midpane*height+height*(1-y) for y in blkdataprop.precipChance],
         precipAmt=[midpane*height+height*(1-y) for y in blkdataprop.precipAmt],
-        temp=[btmpane*height+height*(1-y) for y in blkdataprop.temp],
         weather=None
         )
+    tempPath(d, blkdatapixels, btmpane, height)
     #weathertips=[' &amp; '.join(types) for types,probs,prob in blkdataraw.weather]
     weathertips=[types for types,probs,prob in blkdataraw.weather]
     midframe=Frame(x=0,y=midpane*height,width=width,height=height)
@@ -201,8 +214,8 @@ def computeSvg(**d):
     magfactor=2.5
     blkdatasvg=dict(
         svgid=svgid,
-        minTemp=minTempBlock,
-        maxTemp=maxTempBlock,
+        #minTemp=minTemp,
+        #maxTemp=maxTemp,
         preciptot=totalprecipAsStr,
         precippct=str(int(round(maxPrecipChance,-1))) if maxPrecipChance else '',
         preciptextcolor=preciptextcolor,
@@ -244,5 +257,6 @@ def computeSvg(**d):
         nightorday='day' if isdaytime else 'night',
         foldedOrUnfolded=foldedOrUnfolded,
         )
+    blkdatasvg.update(dataDict)
     #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
     return blkdatasvg

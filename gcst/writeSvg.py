@@ -3,6 +3,7 @@ import re
 from itertools import count, groupby
 
 from gcst.util import minmax, missing, Frame, UnitFrame, debug, Dataset
+from gcst.util import toppane,midpane,btmpane
 
 ndivs=11
 
@@ -46,10 +47,7 @@ svgtmpl='''
         <text x=4 y=64 font-size=10 fill="%(preciptextcolor)s">%(preciptot)s"</text>
         <path d="M 0 67 L %(svgwidth)d 67" stroke='#444' stroke-width=1 fill='none' />
         <desc> ---- bottom pane: foregd of temperature, graphed accto data </desc>
-        <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
-        <desc> text of temperature </desc>
-        <text x=%(minTempShift)d y=95 font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
-        <text x=%(maxTempShift)d y=80 font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
+        %(temptext)s
         <desc> text for oclock lines </desc>
         <g font-size=6 fill="%(oclockcolor)s">
             <text y=99 x=%(quarterwidthminus)d >9:00</text>
@@ -63,6 +61,11 @@ svgtmpl='''
         <desc>%(debugInfo)s</desc>
     </svg>
 '''.strip()
+'''
+        <desc> text of temperature </desc>
+        <text x=%(minTempShift)d y=95 font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
+        <text x=%(maxTempShift)d y=80 font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
+'''
 if not debug:
     svgtmpl=re.sub(r'<desc>.*?<\/desc>\s*','',svgtmpl)
 
@@ -154,39 +157,7 @@ def coordsToPath(xs,ys,closePath=False):
             pass # todo also return path around the missing data segments (ie not haveData) for clipping out the eg sky bkgd
     return '  '.join(pathSegs)
 
-def sumPrecipToString(amts):
-    total=sum([y for y in amts if y is not missing])
-    roundedtotal=round(total,1)
-    if total>0.0 and roundedtotal==0.0:
-        return total,'&lt;0.1'
-    else:
-        return total,str(roundedtotal)
-
-class Temp(object):
-    def __init__(self, pane):
-        self.pane = pane
-    def text(self, inn, out):
-        d=inn
-        isvg=d['isvg']
-        blkdataraw=d['blkdataraw']
-        knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
-        knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
-        minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
-        out.update(dict(
-            minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
-            maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
-        ))
-        return out
-    def pathData(self, d, dataset, height):
-        blkdataprop=d['blkdataprop']
-        dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
-    def svgPath(self, dataset):
-        return coordsToPath(dataset.x,dataset.temp)
-
-toppane,midpane,btmpane=(0,1,2)
-temp=Temp(btmpane)
-
-def computeSvg(**d):
+def computeSvg(dataObjs, d):
     blockwidth=d['blockwidth']
     isvg=d['isvg']
     iblock=d['iblock']
@@ -197,7 +168,9 @@ def computeSvg(**d):
     fullblockwidth=d['fullblockwidth']
     xpixelsaccum=d['xpixelsaccum']
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
-    dataDict = temp.text(d, {})
+    dataDict = {}
+    for obj in dataObjs:
+        dataDict = obj.text(d, dataDict)
     blkdataraw=d['blkdataraw']
     blkdataprop=d['blkdataprop']
     foldedOrUnfolded=d['foldedOrUnfolded']
@@ -205,30 +178,14 @@ def computeSvg(**d):
     width,height=blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
     blkdatapixels=Dataset(
         x=[width*x for x in blkdataprop.x],
-        cloud=[toppane*height+height*(1-y) for y in blkdataprop.cloud],
-        precipChance=[midpane*height+height*(1-y) for y in blkdataprop.precipChance],
-        precipAmt=[midpane*height+height*(1-y) for y in blkdataprop.precipAmt],
         weather=None
         )
-    temp.pathData(d, blkdatapixels, height)
-    #weathertips=[' &amp; '.join(types) for types,probs,prob in blkdataraw.weather]
-    weathertips=[types for types,probs,prob in blkdataraw.weather]
-    midframe=Frame(x=0,y=midpane*height,width=width,height=height)
+    for obj in dataObjs:
+        obj.pathData(d, blkdatapixels, height)
     svgid='%d%s'%(isvg,foldedOrUnfolded[0])
-    totalprecip,totalprecipAsStr=sumPrecipToString(blkdataraw.precipAmt)
-    maxPrecipChance=max(blkdataraw.precipChance)
-    preciptextcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none'
     magfactor=2.5
     blkdatasvg=dict(
         svgid=svgid,
-        preciptot=totalprecipAsStr,
-        precippct=str(int(round(maxPrecipChance,-1))) if maxPrecipChance else '',
-        preciptextcolor=preciptextcolor,
-        precipamt=bargraph(midframe,blkdataprop.x,blkdataprop.precipAmt,weathertips,svgid=svgid),
-        cloudclip=coordsToPath(blkdatapixels.x,blkdatapixels.cloud,closePath=True),
-        precipclip=coordsToPath(blkdatapixels.x,blkdatapixels.precipChance),
-    # N#EXT this shudnt need to know about temp!  see update(dataDict) below
-        temppath=temp.svgPath(blkdatapixels),
         sunormoon='sun' if isdaytime else 'moon',
         vboxwidth=blockwidth,
         blockwidth=blockwidth,
@@ -250,19 +207,14 @@ def computeSvg(**d):
         oclockcolor='#ddd' if isdaytime and not iscompact and blockwidth==fullblockwidth else 'none',
         debugInfo='blockwidth==%d fullblockwidth==%d'%(blockwidth,fullblockwidth) if debug else '',
         darkatnight='"#eee"' if not isdaytime else '"none"',
-        minTempShift=0,
-        maxTempShift=11 if foldedOrUnfolded=='unfolded0' else 60,
-        hitempcolor='#c44' if isdaytime else 'none',
-        lotempcolor='blue' if isdaytime else 'none',
-        cloudtip='%%cloudiness: %s'%(str(blkdataraw.cloud[1:-1])),
-        #preciptip='precipChance(%%): %s'%(str(blkdataraw.precipChance)),
-        preciptip='precipAmt(in): %s'%(list(zip(blkdataraw.x,blkdataraw.precipAmt,weathertips))),
-        temptip='temp(F): %s'%(str(blkdataraw.temp)),
         blockx=xpixelsaccum,
         iblock=iblock,
         nightorday='day' if isdaytime else 'night',
         foldedOrUnfolded=foldedOrUnfolded,
         )
+    for obj in dataObjs:
+        obj.svgPath(blkdatapixels, dataDict)
+        obj.svgGraph(blkdataprop, dataDict, height, width, svgid)
     blkdatasvg.update(dataDict)
     #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
     return blkdatasvg

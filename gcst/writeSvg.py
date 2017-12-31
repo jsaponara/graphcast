@@ -162,21 +162,29 @@ def sumPrecipToString(amts):
     else:
         return total,str(roundedtotal)
 
-def tempText(inn, out):
-    d=inn
-    isvg=d['isvg']
-    blkdataraw=d['blkdataraw']
-    knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
-    knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
-    minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
-    out.update(dict(
-        minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
-        maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
-    ))
-    return out
-def tempPath(d, dataset, pane, height):
-    blkdataprop=d['blkdataprop']
-    dataset.temp = [pane*height+height*(1-y) for y in blkdataprop.temp]
+class Temp(object):
+    def __init__(self, pane):
+        self.pane = pane
+    def text(self, inn, out):
+        d=inn
+        isvg=d['isvg']
+        blkdataraw=d['blkdataraw']
+        knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
+        knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
+        minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
+        out.update(dict(
+            minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
+            maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
+        ))
+        return out
+    def pathData(self, d, dataset, height):
+        blkdataprop=d['blkdataprop']
+        dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
+    def svgPath(self, dataset):
+        return coordsToPath(dataset.x,dataset.temp)
+
+toppane,midpane,btmpane=(0,1,2)
+temp=Temp(btmpane)
 
 def computeSvg(**d):
     blockwidth=d['blockwidth']
@@ -189,13 +197,12 @@ def computeSvg(**d):
     fullblockwidth=d['fullblockwidth']
     xpixelsaccum=d['xpixelsaccum']
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
-    dataDict = tempText(d, {})
+    dataDict = temp.text(d, {})
     blkdataraw=d['blkdataraw']
     blkdataprop=d['blkdataprop']
     foldedOrUnfolded=d['foldedOrUnfolded']
     if debug: print('blockwidth,isdaytime,foldedorun',blockwidth,isdaytime,foldedOrUnfolded)
     width,height=blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
-    toppane,midpane,btmpane=(0,1,2)
     blkdatapixels=Dataset(
         x=[width*x for x in blkdataprop.x],
         cloud=[toppane*height+height*(1-y) for y in blkdataprop.cloud],
@@ -203,7 +210,7 @@ def computeSvg(**d):
         precipAmt=[midpane*height+height*(1-y) for y in blkdataprop.precipAmt],
         weather=None
         )
-    tempPath(d, blkdatapixels, btmpane, height)
+    temp.pathData(d, blkdatapixels, height)
     #weathertips=[' &amp; '.join(types) for types,probs,prob in blkdataraw.weather]
     weathertips=[types for types,probs,prob in blkdataraw.weather]
     midframe=Frame(x=0,y=midpane*height,width=width,height=height)
@@ -214,15 +221,14 @@ def computeSvg(**d):
     magfactor=2.5
     blkdatasvg=dict(
         svgid=svgid,
-        #minTemp=minTemp,
-        #maxTemp=maxTemp,
         preciptot=totalprecipAsStr,
         precippct=str(int(round(maxPrecipChance,-1))) if maxPrecipChance else '',
         preciptextcolor=preciptextcolor,
         precipamt=bargraph(midframe,blkdataprop.x,blkdataprop.precipAmt,weathertips,svgid=svgid),
         cloudclip=coordsToPath(blkdatapixels.x,blkdatapixels.cloud,closePath=True),
         precipclip=coordsToPath(blkdatapixels.x,blkdatapixels.precipChance),
-        temppath=coordsToPath(blkdatapixels.x,blkdatapixels.temp),
+    # N#EXT this shudnt need to know about temp!  see update(dataDict) below
+        temppath=temp.svgPath(blkdatapixels),
         sunormoon='sun' if isdaytime else 'moon',
         vboxwidth=blockwidth,
         blockwidth=blockwidth,

@@ -1,7 +1,8 @@
 
 import re
 from itertools import count, groupby
-from gcst.util import missing, UnitFrame, debug
+
+from gcst.util import missing, Frame, UnitFrame, debug, Dataset
 
 ndivs=11
 
@@ -152,3 +153,96 @@ def coordsToPath(xs,ys,closePath=False):
         else:
             pass # todo also return path around the missing data segments (ie not haveData) for clipping out the eg sky bkgd
     return '  '.join(pathSegs)
+
+def sumPrecipToString(amts):
+    total=sum([y for y in amts if y is not missing])
+    roundedtotal=round(total,1)
+    if total>0.0 and roundedtotal==0.0:
+        return total,'&lt;0.1'
+    else:
+        return total,str(roundedtotal)
+
+def computeSvg(**d):
+    blockwidth=d['blockwidth']
+    isvg=d['isvg']
+    iblock=d['iblock']
+    isdaytime=d['isdaytime']
+    today=d['today']
+    nightwidthfactor=d['nightwidthfactor']
+    iscompact=d['iscompact']
+    fullblockwidth=d['fullblockwidth']
+    xpixelsaccum=d['xpixelsaccum']
+    # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
+    knowMinTemp=(isvg> 0 or len(d['blkdataraw'].x)==12)
+    knowMaxTemp=(isvg<14 or len(d['blkdataraw'].x)>8)
+    minTempBlock=str(d['minTempBlock'])+r'&deg;' if d['minTempBlock'] and knowMinTemp else ''
+    maxTempBlock=str(d['maxTempBlock'])+r'&deg;' if d['maxTempBlock'] and knowMaxTemp else ''
+    blkdataraw=d['blkdataraw']
+    blkdataprop=d['blkdataprop']
+    foldedOrUnfolded=d['foldedOrUnfolded']
+    if debug: print('blockwidth,isdaytime,foldedorun',blockwidth,isdaytime,foldedOrUnfolded)
+    width,height=blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
+    toppane,midpane,btmpane=(0,1,2)
+    blkdatapixels=Dataset(
+        x=[width*x for x in blkdataprop.x],
+        cloud=[toppane*height+height*(1-y) for y in blkdataprop.cloud],
+        precipChance=[midpane*height+height*(1-y) for y in blkdataprop.precipChance],
+        precipAmt=[midpane*height+height*(1-y) for y in blkdataprop.precipAmt],
+        temp=[btmpane*height+height*(1-y) for y in blkdataprop.temp],
+        weather=None
+        )
+    #weathertips=[' &amp; '.join(types) for types,probs,prob in blkdataraw.weather]
+    weathertips=[types for types,probs,prob in blkdataraw.weather]
+    midframe=Frame(x=0,y=midpane*height,width=width,height=height)
+    svgid='%d%s'%(isvg,foldedOrUnfolded[0])
+    totalprecip,totalprecipAsStr=sumPrecipToString(blkdataraw.precipAmt)
+    maxPrecipChance=max(blkdataraw.precipChance)
+    preciptextcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none'
+    magfactor=2.5
+    blkdatasvg=dict(
+        svgid=svgid,
+        minTemp=minTempBlock,
+        maxTemp=maxTempBlock,
+        preciptot=totalprecipAsStr,
+        precippct=str(int(round(maxPrecipChance,-1))) if maxPrecipChance else '',
+        preciptextcolor=preciptextcolor,
+        precipamt=bargraph(midframe,blkdataprop.x,blkdataprop.precipAmt,weathertips,svgid=svgid),
+        cloudclip=coordsToPath(blkdatapixels.x,blkdatapixels.cloud,closePath=True),
+        precipclip=coordsToPath(blkdatapixels.x,blkdatapixels.precipChance),
+        temppath=coordsToPath(blkdatapixels.x,blkdatapixels.temp),
+        sunormoon='sun' if isdaytime else 'moon',
+        vboxwidth=blockwidth,
+        blockwidth=blockwidth,
+        svgwidth=magfactor*blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
+        svgheight=magfactor*100,
+        dayofweekcolor='black' if isdaytime else 'none',
+        dateofmonthcolor='black' if isdaytime else 'none',
+        #title=today.strftime('%a %d%b'),
+        dayofweek=today.strftime('%a'),
+        dateofmonth=today.strftime('%d'),
+        # for oclockpath lines (9:00 etc)
+        # todo short day might not have all 3 timesofday
+        quarterwidth=.25*blockwidth,
+        halfwidth=.5*blockwidth,
+        threequarterwidth=.75*blockwidth,
+        quarterwidthminus=.25*blockwidth-7,
+        halfwidthminus=.5*blockwidth-9,
+        threequarterwidthminus=.75*blockwidth-7,
+        oclockcolor='#ddd' if isdaytime and not iscompact and blockwidth==fullblockwidth else 'none',
+        debugInfo='blockwidth==%d fullblockwidth==%d'%(blockwidth,fullblockwidth) if debug else '',
+        darkatnight='"#eee"' if not isdaytime else '"none"',
+        minTempShift=0,
+        maxTempShift=11 if foldedOrUnfolded=='unfolded0' else 60,
+        hitempcolor='#c44' if isdaytime else 'none',
+        lotempcolor='blue' if isdaytime else 'none',
+        cloudtip='%%cloudiness: %s'%(str(blkdataraw.cloud[1:-1])),
+        #preciptip='precipChance(%%): %s'%(str(blkdataraw.precipChance)),
+        preciptip='precipAmt(in): %s'%(list(zip(blkdataraw.x,blkdataraw.precipAmt,weathertips))),
+        temptip='temp(F): %s'%(str(blkdataraw.temp)),
+        blockx=xpixelsaccum,
+        iblock=iblock,
+        nightorday='day' if isdaytime else 'night',
+        foldedOrUnfolded=foldedOrUnfolded,
+        )
+    #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
+    return blkdatasvg

@@ -1,8 +1,20 @@
 
+import attr
+
 debug=False
 
 def isEven(k): return k/2.==int(k/2.)
 def isOdd(k): return not isEven(k)
+
+@attr.s
+class Dataset(object):
+    x = attr.ib(default=attr.Factory(list))
+    cloud = attr.ib(default=attr.Factory(list))
+    precipChance = attr.ib(default=attr.Factory(list))
+    precipAmt = attr.ib(default=attr.Factory(list))
+    temp = attr.ib(default=attr.Factory(list))
+    weather = attr.ib(default=attr.Factory(list))
+    # add wind?
 
 def nonNone(seq):
     return (item for item in seq if item is not None)

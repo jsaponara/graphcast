@@ -56,27 +56,30 @@ maxPrecipAmt=float(I.torrent)
 class Temp(object):
     def __init__(self, pane):
         self.pane = pane
+        self.vars = {}
         self.reset()
     def reset(self):
         self.svgtmpl='''
             <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
             <desc> text of temperature </desc>
-            <text x=%(minTempShift)d y=95 font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
-            <text x=%(maxTempShift)d y=80 font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>'''
+            <text x=%(minTempShift)d y=%(minTempY)s font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
+            <text x=%(maxTempShift)d y=%(maxTempY)s font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>'''
     def text(self, inn, out):
         self.reset()
-        print('=====svgtmpl',self.svgtmpl)
+        #print('=====svgtmpl',self.svgtmpl)
         isvg=inn['isvg']
         blkdataraw=inn['blkdataraw']
         isdaytime=inn['isdaytime']
         foldedOrUnfolded=inn['foldedOrUnfolded']
         temptip='temp(F): %s'%(str(blkdataraw.temp))
         temppath='%(temppath)s'
+        minTempY='%(minTempY)s'
+        maxTempY='%(maxTempY)s'
         knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
         knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
         minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
         minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else ''
-        print('minTemp,minTempBlock,knowMinTemp,isvg,len(blkdataraw.x)',minTemp,minTempBlock,knowMinTemp,isvg,len(blkdataraw.x))
+        #print('minTemp,minTempBlock,knowMinTemp,isvg,len(blkdataraw.x)',minTemp,minTempBlock,knowMinTemp,isvg,len(blkdataraw.x))
         maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else ''
         minTempShift=0
         maxTempShift=11 if foldedOrUnfolded=='unfolded0' else 60
@@ -90,16 +93,21 @@ class Temp(object):
         blkdataprop=d['blkdataprop']
         dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
     def svgPath(self, dataset, svgDict):
-        temppath=coordsToPath(dataset.x,dataset.temp)
-        svgDict.update(dict(
-            temptext=self.svgtmpl % vars()
+        self.vars.update(dict(
+            temppath=coordsToPath(dataset.x,dataset.temp)
         ))
-        print(svgDict['temptext'])
     def svgGraph(self, dataset, svgDict, height, width, svgid):
-        pass
+        self.vars.update(dict(
+            minTempY = str(self.pane * height + 28),
+            maxTempY = str(self.pane * height + 13),
+        ))
+        svgDict.update(dict(
+            temptext=self.svgtmpl % self.vars
+        ))
 class Clouds(object):
     def __init__(self, pane):
         self.pane = pane
+        self.reset()
     def reset(self):
         pass
     def text(self, inn, out):  # todo passthru could be inherited
@@ -157,7 +165,7 @@ class Precip(object):
             return total,str(roundedtotal)
 
 
-temp=Temp(midpane)
+temp=Temp(btmpane)
 cloud=Clouds(toppane)
 precip=Precip(midpane)
 dataObjs=[temp, cloud, precip]
@@ -208,8 +216,6 @@ def fcstgfx(location):
     svgs=[]
     xpixelsaccum=0
     for isvg, (k, grp) in enumerate(indexIter):
-        for obj in dataObjs:
-            obj.reset()
         iblocks, ihours, itimes=zip(*grp)
         # all iblocks values should be the same [due to groupby] and equal to isvg
         iblock=iblocks[0]

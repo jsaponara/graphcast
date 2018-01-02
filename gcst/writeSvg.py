@@ -8,8 +8,9 @@ from gcst.util import toppane,midpane,btmpane
 ndivs=11
 
 # svg template for a single 12hr block
-#    template has slots for: cloudclip precipclip precippct precipamt temppath templo temphi
+#    template has slots for: cloudSvg precipSvg tempSvg
 #    where cloud=cloudiness, precip=precipitation, temp=temperature
+# data object files have the svg templates for the individual data objects: Temp Clouds Precip
 #    and *clip is just points [pairs of ints] defining a polygon,
 #    and *path is M x y L x y x y...  [M=moveto, L=lineto]
 # foldedOrUnfolded: blocks can be full size [unfolded] or compact [folded] or marginal ['z']
@@ -28,34 +29,18 @@ svgtmpl='''
         <desc> time of day lines at 9:00,12:00,3:00; draw oclockpath lines down only to 90ish to leave room for oclock times (9:00 etc) </desc>
         <path d='M %(quarterwidth).1f 0 L %(quarterwidth).1f 94  M %(halfwidth).1f 0 L %(halfwidth).1f 94  M %(threequarterwidth).1f 0 L %(threequarterwidth).1f 94'
             fill='none' stroke-width=1 stroke="%(oclockcolor)s"/>
-        <desc> ---- top pane: bkgd of clear sky, clipped at start and end of fcst time range </desc>
-        <image xlink:href="/static/gcst/img/%(sunormoon)s.png" 
-            x=0 y=0 width=100 height=33 />
-        <desc> top: foregd of clouds, clipped accto data </desc>
-        <clipPath id="pctclouds%(svgid)s" >
-            <path d="%(cloudclip)s"/>
-            </clipPath>
-        <image xlink:href="/static/gcst/img/%(sunormoon)sclouds.png" title='%(cloudtip)s' 
-            x=0 y=0 width=100 height=33 clip-path="url(#pctclouds%(svgid)s)" />
-        <desc> day and date (must come after sunormoon etc to avoid being hidden) </desc>
+        %(cloudSvg)s
+        <desc> day and date (must come after cloudSvg to avoid being hidden) </desc>
         <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
         <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
-        <desc> ---- middle pane: foregd of rain, clipped accto data </desc>
-        <path d="%(precipclip)s" title='%(preciptip)s' stroke='#aaa' stroke-width=3 fill='none' />
-        <desc> mid: rain text </desc>
-        <text x=4 y=50 font-size=10 fill="%(preciptextcolor)s">%(precippct)s%%</text>
-        <text x=4 y=64 font-size=10 fill="%(preciptextcolor)s">%(preciptot)s"</text>
-        <path d="M 0 67 L %(svgwidth)d 67" stroke='#444' stroke-width=1 fill='none' />
-        <desc> ---- bottom pane: foregd of temperature, graphed accto data </desc>
-        %(temptext)s
-        <desc> text for oclock lines </desc>
+        %(precipSvg)s
+        %(tempSvg)s
         <g font-size=6 fill="%(oclockcolor)s">
+            <desc> text for oclock lines </desc>
             <text y=99 x=%(quarterwidthminus)d >9:00</text>
             <text y=99 x=%(halfwidthminus)d>12:00</text>
             <text y=99 x=%(threequarterwidthminus)d>3:00</text>
-            <text x=78 y=6 >clouds</text>
-            <text x=78 y=39 >storms</text>
-            <text x=78 y=72 >temps</text>
+            <desc> separator </desc>
             <line x1=0 y1=67 x2=100 y2=67 />
         </g>
         <desc>%(debugInfo)s</desc>
@@ -158,6 +143,8 @@ def coordsToPath(xs,ys,closePath=False):
     return '  '.join(pathSegs)
 
 def computeSvg(dataObjs, d):
+    magfactor=2.5
+    d['magfactor']=magfactor
     blockwidth=d['blockwidth']
     isvg=d['isvg']
     iblock=d['iblock']
@@ -170,7 +157,7 @@ def computeSvg(dataObjs, d):
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
     dataDict = {}
     for obj in dataObjs:
-        dataDict = obj.text(d, dataDict)
+        obj.text(d, dataDict)
     blkdataraw=d['blkdataraw']
     blkdataprop=d['blkdataprop']
     foldedOrUnfolded=d['foldedOrUnfolded']
@@ -183,10 +170,8 @@ def computeSvg(dataObjs, d):
     for obj in dataObjs:
         obj.pathData(d, blkdatapixels, height)
     svgid='%d%s'%(isvg,foldedOrUnfolded[0])
-    magfactor=2.5
     blkdatasvg=dict(
         svgid=svgid,
-        sunormoon='sun' if isdaytime else 'moon',
         vboxwidth=blockwidth,
         blockwidth=blockwidth,
         svgwidth=magfactor*blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,

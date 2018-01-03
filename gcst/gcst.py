@@ -76,6 +76,8 @@ class Temp(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
+    def reportBlock(self):
+        return dict(tempSvg=self.svgtmpl % self.vars)
     def text(self, inn, out):
         self.initBlock(inn)
         isvg=inn['isvg']
@@ -97,21 +99,21 @@ class Temp(object):
             hitempcolor='#c44' if isdaytime else 'none',
             lotempcolor='blue' if isdaytime else 'none',
         ))
-    def pathData(self, d, dataset, height):
+    def pathData(self, dataset, height):
+        d=self.block.data
         blkdataprop=d['blkdataprop']
         dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
-    def svgPath(self, dataset, svgDict):
+    def svgPath(self, dataset):
         self.vars.update(dict(
             temppath=coordsToPath(dataset.x,dataset.temp)
         ))
-    def svgGraph(self, dataset, svgDict, height, width, svgid):
+    def svgGraph(self, dataset, height, width, svgid):
         self.vars.update(dict(
             minTempY = str(self.pane * height + 28),
             maxTempY = str(self.pane * height + 13),
             paneDescY=self.pane*height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
-        svgDict['tempSvg']=self.svgtmpl % self.vars
 
 class Clouds(object):
     def __init__(self, pane):
@@ -131,6 +133,8 @@ class Clouds(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
+    def reportBlock(self):
+        return dict(cloudSvg=self.svgtmpl % self.vars)
     def text(self, inn, out):
         self.initBlock(inn)
         blkdataraw=inn['blkdataraw']
@@ -139,20 +143,20 @@ class Clouds(object):
             sunormoon='sun' if inn['isdaytime'] else 'moon',
             cloudtip='%%cloudiness: %s'%(str(blkdataraw.cloud[1:-1])),
         ))
-    def pathData(self, d, dataset, height):
+    def pathData(self, dataset, height):
+        d=self.block.data
         blkdataprop=d['blkdataprop']
         dataset.cloud=[self.pane*height+height*(1-y) for y in blkdataprop.cloud]
-    def svgPath(self, dataset, svgDict):
+    def svgPath(self, dataset):
         self.vars.update(dict(
             cloudclip=coordsToPath(dataset.x,dataset.cloud,closePath=True)
         ))
-    def svgGraph(self, dataset, svgDict, height, width, svgid):
+    def svgGraph(self, dataset, height, width, svgid):
         self.vars.update(dict(
             cloudBkgdY=self.pane*height,
             paneDescY=self.pane*height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
-        svgDict['cloudSvg']=self.svgtmpl % self.vars
 
 class Precip(object):
     def __init__(self, pane):
@@ -168,6 +172,8 @@ class Precip(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
+    def reportBlock(self):
+        return dict(precipSvg=self.svgtmpl % self.vars)
     def text(self, inn, out):
         self.initBlock(inn)
         blkdataraw=inn['blkdataraw']
@@ -182,15 +188,16 @@ class Precip(object):
             #preciptip='precipChance(%%): %s'%(str(blkdataraw.precipChance)),
             preciptip='precipAmt(in): %s'%(list(zip(blkdataraw.x,blkdataraw.precipAmt,blkdataprop.weather))),
         ))
-    def pathData(self, d, dataset, height):
+    def pathData(self, dataset, height):
+        d=self.block.data
         blkdataprop=d['blkdataprop']
         dataset.precipChance=[self.pane*height+height*(1-y) for y in blkdataprop.precipChance]
         dataset.precipAmt=[self.pane*height+height*(1-y) for y in blkdataprop.precipAmt]
-    def svgPath(self, dataset, svgDict):
+    def svgPath(self, dataset):
         self.vars.update(dict(
             precipclip=coordsToPath(dataset.x,dataset.precipChance),
         ))
-    def svgGraph(self, dataset, svgDict, height, width, svgid):
+    def svgGraph(self, dataset, height, width, svgid):
         midframe=Frame(x=0,y=self.pane*height,width=width,height=height)
         self.vars.update(dict(
             precipamt=bargraph(midframe,dataset.x,dataset.precipAmt,dataset.weather,svgid=svgid),
@@ -199,7 +206,6 @@ class Precip(object):
             paneDescY=self.pane*height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
-        svgDict['precipSvg']=self.svgtmpl % self.vars
     def sumPrecipToString(self, amts):
         total=sum([y for y in amts if y is not missing])
         roundedtotal=round(total,1)

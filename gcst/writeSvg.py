@@ -168,7 +168,7 @@ def computeSvg(dataObjs, d):
         weather=None
         )
     for obj in dataObjs:
-        obj.pathData(d, blkdatapixels, height)
+        obj.pathData(blkdatapixels, height)
     svgid='%d%s'%(isvg,foldedOrUnfolded[0])
     blkdatasvg=dict(
         svgid=svgid,
@@ -198,8 +198,8 @@ def computeSvg(dataObjs, d):
         foldedOrUnfolded=foldedOrUnfolded,
         )
     for obj in dataObjs:
-        obj.svgPath(blkdatapixels, dataDict)
-        obj.svgGraph(blkdataprop, dataDict, height, width, svgid)
-    blkdatasvg.update(dataDict)
+        obj.svgPath(blkdatapixels)
+        obj.svgGraph(blkdataprop, height, width, svgid)
+        blkdatasvg.update(obj.reportBlock())
     #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
     return blkdatasvg

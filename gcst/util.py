@@ -18,6 +18,13 @@ class Dataset(object):
     weather = attr.ib(default=attr.Factory(list))
     # add wind?
 
+# merely for convenience: dictionary.key rather than dictionary['key']
+def dict2obj(dic):
+    class Obj(object):
+        def __init__(self, dic):
+            self.__dict__=dic
+    return Obj(dic)
+
 def nonNone(seq):
     return (item for item in seq if item is not None)
 def minmax(seq):

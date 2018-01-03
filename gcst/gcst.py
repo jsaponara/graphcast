@@ -57,11 +57,18 @@ class Block(object):
     def __init__(self, blockData):
         self.data=blockData
     def oclockcolor(self):
-        isdaytime=self.data['isdaytime']
-        iscompact=self.data['iscompact']
-        blockwidth=self.data['blockwidth']
-        fullblockwidth=self.data['fullblockwidth']
+        d=self.data
+        isdaytime=d.isdaytime
+        iscompact=d.iscompact
+        blockwidth=d.blockwidth
+        fullblockwidth=d.fullblockwidth
         return '#bbb' if isdaytime and not iscompact and blockwidth==fullblockwidth else 'none'
+
+def process(obj, d):
+    obj.text(d)
+    obj.pathData(d.blkdatapixels, d.height)
+    obj.svgPath(d.blkdatapixels)
+    obj.svgGraph(d.blkdataprop, d.height, d.width, d.svgid)
 
 class Temp(object):
     def __init__(self, pane):
@@ -76,32 +83,30 @@ class Temp(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
-    def reportBlock(self):
+    def renderBlock(self, blockData):
+        process(self, blockData)
         return dict(tempSvg=self.svgtmpl % self.vars)
-    def text(self, inn, out):
-        self.initBlock(inn)
-        isvg=inn['isvg']
-        blkdataraw=inn['blkdataraw']
-        isdaytime=inn['isdaytime']
-        foldedOrUnfolded=inn['foldedOrUnfolded']
-        minTempBlock,maxTempBlock=minmax(blkdataraw.temp)
-        knowMinTemp=(isvg> 0 or len(blkdataraw.x)==12)
-        knowMaxTemp=(isvg<14 or len(blkdataraw.x)>8)
+    def text(self, inn):
+        d=inn
+        self.initBlock(d)
+        minTempBlock,maxTempBlock=minmax(d.blkdataraw.temp)
+        knowMinTemp=(d.isvg> 0 or len(d.blkdataraw.x)==12)
+        knowMaxTemp=(d.isvg<14 or len(d.blkdataraw.x)>8)
         self.vars.update(dict(
-            temptip='temp(F): %s'%(str(blkdataraw.temp)),
+            temptip='temp(F): %s'%(str(d.blkdataraw.temp)),
             temppath='%(temppath)s',
             minTempY='%(minTempY)s',
             maxTempY='%(maxTempY)s',
             minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
             maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
             minTempShift=0,
-            maxTempShift=11 if foldedOrUnfolded=='unfolded0' else 60,
-            hitempcolor='#c44' if isdaytime else 'none',
-            lotempcolor='blue' if isdaytime else 'none',
+            maxTempShift=11 if d.foldedOrUnfolded=='unfolded0' else 60,
+            hitempcolor='#c44' if d.isdaytime else 'none',
+            lotempcolor='blue' if d.isdaytime else 'none',
         ))
     def pathData(self, dataset, height):
         d=self.block.data
-        blkdataprop=d['blkdataprop']
+        blkdataprop=d.blkdataprop
         dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
     def svgPath(self, dataset):
         self.vars.update(dict(
@@ -133,19 +138,20 @@ class Clouds(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
-    def reportBlock(self):
+    def renderBlock(self, blockData):
+        process(self, blockData)
         return dict(cloudSvg=self.svgtmpl % self.vars)
-    def text(self, inn, out):
-        self.initBlock(inn)
-        blkdataraw=inn['blkdataraw']
+    def text(self, inn):
+        d=inn
+        self.initBlock(d)
         self.vars.update(dict(
-            svgid=inn['svgid'],
-            sunormoon='sun' if inn['isdaytime'] else 'moon',
-            cloudtip='%%cloudiness: %s'%(str(blkdataraw.cloud[1:-1])),
+            svgid=d.svgid,
+            sunormoon='sun' if d.isdaytime else 'moon',
+            cloudtip='%%cloudiness: %s'%(str(d.blkdataraw.cloud[1:-1])),
         ))
     def pathData(self, dataset, height):
         d=self.block.data
-        blkdataprop=d['blkdataprop']
+        blkdataprop=d.blkdataprop
         dataset.cloud=[self.pane*height+height*(1-y) for y in blkdataprop.cloud]
     def svgPath(self, dataset):
         self.vars.update(dict(
@@ -172,25 +178,25 @@ class Precip(object):
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
-    def reportBlock(self):
+    def renderBlock(self, blockData):
+        process(self, blockData)
         return dict(precipSvg=self.svgtmpl % self.vars)
-    def text(self, inn, out):
-        self.initBlock(inn)
-        blkdataraw=inn['blkdataraw']
-        blkdataprop=inn['blkdataprop']
-        totalprecip,totalprecipAsStr=self.sumPrecipToString(blkdataraw.precipAmt)
-        maxPrecipChance=max(blkdataraw.precipChance)
+    def text(self, inn):
+        d=inn
+        self.initBlock(d)
+        totalprecip,totalprecipAsStr=self.sumPrecipToString(d.blkdataraw.precipAmt)
+        maxPrecipChance=max(d.blkdataraw.precipChance)
         self.vars.update(dict(
-            svgwidth=inn['magfactor']*inn['blockwidth'], # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
+            svgwidth=d.magfactor*d.blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
             preciptot=totalprecipAsStr,
             precippct=str(int(round(maxPrecipChance,-1))) if maxPrecipChance else '',
             preciptextcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none',
-            #preciptip='precipChance(%%): %s'%(str(blkdataraw.precipChance)),
-            preciptip='precipAmt(in): %s'%(list(zip(blkdataraw.x,blkdataraw.precipAmt,blkdataprop.weather))),
+            #preciptip='precipChance(%%): %s'%(str(d.blkdataraw.precipChance)),
+            preciptip='precipAmt(in): %s'%(list(zip(d.blkdataraw.x,d.blkdataraw.precipAmt,d.blkdataprop.weather))),
         ))
     def pathData(self, dataset, height):
         d=self.block.data
-        blkdataprop=d['blkdataprop']
+        blkdataprop=d.blkdataprop
         dataset.precipChance=[self.pane*height+height*(1-y) for y in blkdataprop.precipChance]
         dataset.precipAmt=[self.pane*height+height*(1-y) for y in blkdataprop.precipAmt]
     def svgPath(self, dataset):

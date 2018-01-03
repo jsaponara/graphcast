@@ -3,7 +3,7 @@ import re
 from itertools import count, groupby
 
 from gcst.util import minmax, missing, Frame, UnitFrame, debug, Dataset
-from gcst.util import toppane,midpane,btmpane
+from gcst.util import toppane,midpane,btmpane, dict2obj
 
 ndivs=11
 
@@ -142,64 +142,45 @@ def coordsToPath(xs,ys,closePath=False):
             pass # todo also return path around the missing data segments (ie not haveData) for clipping out the eg sky bkgd
     return '  '.join(pathSegs)
 
-def computeSvg(dataObjs, d):
+def computeSvg(dataObjs, dic):
     magfactor=2.5
-    d['magfactor']=magfactor
-    blockwidth=d['blockwidth']
-    isvg=d['isvg']
-    iblock=d['iblock']
-    isdaytime=d['isdaytime']
-    today=d['today']
-    nightwidthfactor=d['nightwidthfactor']
-    iscompact=d['iscompact']
-    fullblockwidth=d['fullblockwidth']
-    xpixelsaccum=d['xpixelsaccum']
+    dic['magfactor']=magfactor
+    d=dict2obj(dic)
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
-    dataDict = {}
-    for obj in dataObjs:
-        obj.text(d, dataDict)
-    blkdataraw=d['blkdataraw']
-    blkdataprop=d['blkdataprop']
-    foldedOrUnfolded=d['foldedOrUnfolded']
-    if debug: print('blockwidth,isdaytime,foldedorun',blockwidth,isdaytime,foldedOrUnfolded)
-    width,height=blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
-    blkdatapixels=Dataset(
-        x=[width*x for x in blkdataprop.x],
+    if debug: print('blockwidth,isdaytime,foldedorun',d.blockwidth,d.isdaytime,d.foldedOrUnfolded)
+    d.width,d.height=d.blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
+    d.blkdatapixels=Dataset(
+        x=[d.width*x for x in d.blkdataprop.x],
         weather=None
         )
-    for obj in dataObjs:
-        obj.pathData(blkdatapixels, height)
-    svgid='%d%s'%(isvg,foldedOrUnfolded[0])
+    d.svgid='%d%s'%(d.isvg,d.foldedOrUnfolded[0])
     blkdatasvg=dict(
-        svgid=svgid,
-        vboxwidth=blockwidth,
-        blockwidth=blockwidth,
-        svgwidth=magfactor*blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
+        svgid=d.svgid,
+        vboxwidth=d.blockwidth,
+        blockwidth=d.blockwidth,
+        svgwidth=magfactor*d.blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
         svgheight=magfactor*100,
-        dayofweekcolor='black' if isdaytime else 'none',
-        dateofmonthcolor='black' if isdaytime else 'none',
+        dayofweekcolor='black' if d.isdaytime else 'none',
+        dateofmonthcolor='black' if d.isdaytime else 'none',
         #title=today.strftime('%a %d%b'),
-        dayofweek=today.strftime('%a'),
-        dateofmonth=today.strftime('%d'),
+        dayofweek=d.today.strftime('%a'),
+        dateofmonth=d.today.strftime('%d'),
         # for oclockpath lines (9:00 etc)
         # todo short day might not have all 3 timesofday
-        quarterwidth=.25*blockwidth,
-        halfwidth=.5*blockwidth,
-        threequarterwidth=.75*blockwidth,
-        quarterwidthminus=.25*blockwidth-7,
-        halfwidthminus=.5*blockwidth-9,
-        threequarterwidthminus=.75*blockwidth-7,
-        oclockcolor='#ddd' if isdaytime and not iscompact and blockwidth==fullblockwidth else 'none',
-        debugInfo='blockwidth==%d fullblockwidth==%d'%(blockwidth,fullblockwidth) if debug else '',
-        darkatnight='"#eee"' if not isdaytime else '"none"',
-        blockx=xpixelsaccum,
-        iblock=iblock,
-        nightorday='day' if isdaytime else 'night',
-        foldedOrUnfolded=foldedOrUnfolded,
+        quarterwidth=.25*d.blockwidth,
+        halfwidth=.5*d.blockwidth,
+        threequarterwidth=.75*d.blockwidth,
+        quarterwidthminus=.25*d.blockwidth-7,
+        halfwidthminus=.5*d.blockwidth-9,
+        threequarterwidthminus=.75*d.blockwidth-7,
+        oclockcolor='#ddd' if d.isdaytime and not d.iscompact and d.blockwidth==d.fullblockwidth else 'none',
+        debugInfo='blockwidth==%d fullblockwidth==%d'%(d.blockwidth,d.fullblockwidth) if debug else '',
+        darkatnight='"#eee"' if not d.isdaytime else '"none"',
+        blockx=d.xpixelsaccum,
+        iblock=d.iblock,
+        nightorday='day' if d.isdaytime else 'night',
+        foldedOrUnfolded=d.foldedOrUnfolded,
         )
     for obj in dataObjs:
-        obj.svgPath(blkdatapixels)
-        obj.svgGraph(blkdataprop, height, width, svgid)
-        blkdatasvg.update(obj.reportBlock())
-    #print(today,blkdatasvg['nightorday'],foldedOrUnfolded,blkdatasvg['oclockcolor'])
+        blkdatasvg.update(obj.renderBlock(d))
     return blkdatasvg

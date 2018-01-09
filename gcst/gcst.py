@@ -5,7 +5,7 @@
 # todo remove hi/lo temp if dont have that part of the day
 # todo end graph early if data is missing toward the end of the week.
 # todo fix nbars==12 but ndivs==11, wh caused "rain12_of_11.png 404 (Not Found)"
-# todo swap folded vs unfolded; eg maxTempShift should be smaller when folded, not unfolded.
+# todo swap folded vs unfolded; eg maxTempX should be smaller when folded, not unfolded.
 # todo before turning on cacheData: re-getnewdata if too old; remove expired cached data
 
 # glossary
@@ -55,9 +55,9 @@ maxPrecipAmt=float(I.torrent)
 
 class Block(object):
     def __init__(self, blockData):
-        self.data=blockData
+        self.__dict__.update(blockData.__dict__)
     def oclockcolor(self):
-        d=self.data
+        d=self
         isdaytime=d.isdaytime
         iscompact=d.iscompact
         blockwidth=d.blockwidth
@@ -65,10 +65,11 @@ class Block(object):
         return '#bbb' if isdaytime and not iscompact and blockwidth==fullblockwidth else 'none'
 
 def process(obj, d):
-    obj.text(d)
-    obj.pathData(d.blkdatapixels, d.height)
-    obj.svgPath(d.blkdatapixels)
-    obj.svgGraph(d.blkdataprop, d.height, d.width, d.svgid)
+    obj.initBlock(d)
+    obj.text()
+    obj.pathData()
+    obj.svgPath()
+    obj.svgGraph()
 
 class Temp(object):
     def __init__(self, pane):
@@ -77,8 +78,8 @@ class Temp(object):
         self.svgtmpl='''
             <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
             <desc> text of temperature </desc>
-            <text x=%(minTempShift)d y=%(minTempY)s font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
-            <text x=%(maxTempShift)d y=%(maxTempY)s font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
+            <text x=%(minTempX)d y=%(minTempY)s font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
+            <text x=%(maxTempX)d y=%(maxTempY)s font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
             <text x=78 y=%(paneDescY)s font-size=6 fill="%(oclockcolor)s">temps</text>
         '''
     def initBlock(self, inn):
@@ -86,9 +87,8 @@ class Temp(object):
     def renderBlock(self, blockData):
         process(self, blockData)
         return dict(tempSvg=self.svgtmpl % self.vars)
-    def text(self, inn):
-        d=inn
-        self.initBlock(d)
+    def text(self):
+        d=self.block
         minTempBlock,maxTempBlock=minmax(d.blkdataraw.temp)
         knowMinTemp=(d.isvg> 0 or len(d.blkdataraw.x)==12)
         knowMaxTemp=(d.isvg<14 or len(d.blkdataraw.x)>8)
@@ -99,24 +99,26 @@ class Temp(object):
             maxTempY='%(maxTempY)s',
             minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
             maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
-            minTempShift=0,
-            maxTempShift=11 if d.foldedOrUnfolded=='unfolded0' else 60,
+            minTempX=0,
+            maxTempX=11 if d.foldedOrUnfolded=='unfolded0' else 60,
             hitempcolor='#c44' if d.isdaytime else 'none',
             lotempcolor='blue' if d.isdaytime else 'none',
         ))
-    def pathData(self, dataset, height):
-        d=self.block.data
-        blkdataprop=d.blkdataprop
-        dataset.temp = [self.pane*height+height*(1-y) for y in blkdataprop.temp]
-    def svgPath(self, dataset):
+    def pathData(self):
+        d=self.block
+        d.blkdatapixels.temp = [self.pane*d.height+d.height*(1-y) for y in d.blkdataprop.temp]
+    def svgPath(self):
+        d=self.block
+        dataset=d.blkdatapixels
         self.vars.update(dict(
             temppath=coordsToPath(dataset.x,dataset.temp)
         ))
-    def svgGraph(self, dataset, height, width, svgid):
+    def svgGraph(self):
+        d=self.block
         self.vars.update(dict(
-            minTempY = str(self.pane * height + 28),
-            maxTempY = str(self.pane * height + 13),
-            paneDescY=self.pane*height+6,
+            minTempY = str(self.pane * d.height + 28),
+            maxTempY = str(self.pane * d.height + 13),
+            paneDescY=self.pane*d.height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
 
@@ -141,26 +143,26 @@ class Clouds(object):
     def renderBlock(self, blockData):
         process(self, blockData)
         return dict(cloudSvg=self.svgtmpl % self.vars)
-    def text(self, inn):
-        d=inn
-        self.initBlock(d)
+    def text(self):
+        d=self.block
         self.vars.update(dict(
             svgid=d.svgid,
             sunormoon='sun' if d.isdaytime else 'moon',
             cloudtip='%%cloudiness: %s'%(str(d.blkdataraw.cloud[1:-1])),
         ))
-    def pathData(self, dataset, height):
-        d=self.block.data
-        blkdataprop=d.blkdataprop
-        dataset.cloud=[self.pane*height+height*(1-y) for y in blkdataprop.cloud]
-    def svgPath(self, dataset):
+    def pathData(self):
+        d=self.block
+        d.blkdatapixels.cloud=[self.pane*d.height+d.height*(1-y) for y in d.blkdataprop.cloud]
+    def svgPath(self):
+        d=self.block
         self.vars.update(dict(
-            cloudclip=coordsToPath(dataset.x,dataset.cloud,closePath=True)
+            cloudclip=coordsToPath(d.blkdatapixels.x,d.blkdatapixels.cloud,closePath=True)
         ))
-    def svgGraph(self, dataset, height, width, svgid):
+    def svgGraph(self):
+        d=self.block
         self.vars.update(dict(
-            cloudBkgdY=self.pane*height,
-            paneDescY=self.pane*height+6,
+            cloudBkgdY=self.pane*d.height,
+            paneDescY=self.pane*d.height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
 
@@ -181,9 +183,8 @@ class Precip(object):
     def renderBlock(self, blockData):
         process(self, blockData)
         return dict(precipSvg=self.svgtmpl % self.vars)
-    def text(self, inn):
-        d=inn
-        self.initBlock(d)
+    def text(self):
+        d=self.block
         totalprecip,totalprecipAsStr=self.sumPrecipToString(d.blkdataraw.precipAmt)
         maxPrecipChance=max(d.blkdataraw.precipChance)
         self.vars.update(dict(
@@ -194,22 +195,27 @@ class Precip(object):
             #preciptip='precipChance(%%): %s'%(str(d.blkdataraw.precipChance)),
             preciptip='precipAmt(in): %s'%(list(zip(d.blkdataraw.x,d.blkdataraw.precipAmt,d.blkdataprop.weather))),
         ))
-    def pathData(self, dataset, height):
-        d=self.block.data
-        blkdataprop=d.blkdataprop
-        dataset.precipChance=[self.pane*height+height*(1-y) for y in blkdataprop.precipChance]
-        dataset.precipAmt=[self.pane*height+height*(1-y) for y in blkdataprop.precipAmt]
-    def svgPath(self, dataset):
+    def pathData(self):
+        d=self.block
+        inDataset=d.blkdataprop
+        outDataset=d.blkdatapixels
+        outDataset.precipChance=[self.pane*d.height+d.height*(1-y) for y in inDataset.precipChance]
+        outDataset.precipAmt=[self.pane*d.height+d.height*(1-y) for y in inDataset.precipAmt]
+    def svgPath(self):
+        d=self.block
+        inDataset=d.blkdatapixels
         self.vars.update(dict(
-            precipclip=coordsToPath(dataset.x,dataset.precipChance),
+            precipclip=coordsToPath(inDataset.x,inDataset.precipChance),
         ))
-    def svgGraph(self, dataset, height, width, svgid):
-        midframe=Frame(x=0,y=self.pane*height,width=width,height=height)
+    def svgGraph(self):
+        d=self.block
+        dataset=d.blkdataprop
+        frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
         self.vars.update(dict(
-            precipamt=bargraph(midframe,dataset.x,dataset.precipAmt,dataset.weather,svgid=svgid),
-            precippctY=self.pane*height+13,
-            preciptotY=self.pane*height+21,
-            paneDescY=self.pane*height+6,
+            precipamt=bargraph(frame,dataset.x,dataset.precipAmt,dataset.weather,svgid=d.svgid),
+            precippctY=self.pane*d.height+13,
+            preciptotY=self.pane*d.height+21,
+            paneDescY=self.pane*d.height+6,
             oclockcolor=self.block.oclockcolor(),
         ))
     def sumPrecipToString(self, amts):

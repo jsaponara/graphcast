@@ -29,10 +29,8 @@ svgtmpl='''
         <desc> time of day lines at 9:00,12:00,3:00; draw oclockpath lines down only to 90ish to leave room for oclock times (9:00 etc) </desc>
         <path d='M %(quarterwidth).1f 0 L %(quarterwidth).1f 94  M %(halfwidth).1f 0 L %(halfwidth).1f 94  M %(threequarterwidth).1f 0 L %(threequarterwidth).1f 94'
             fill='none' stroke-width=1 stroke="%(oclockcolor)s"/>
+        <path d="M 0 67 L %(svgwidth)d 67" stroke='#444' stroke-width=1 fill='none' />
         %(cloudSvg)s
-        <desc> day and date (must come after cloudSvg to avoid being hidden) </desc>
-        <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
-        <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
         %(precipSvg)s
         %(tempSvg)s
         <g font-size=6 fill="%(oclockcolor)s">
@@ -46,13 +44,14 @@ svgtmpl='''
         <desc>%(debugInfo)s</desc>
     </svg>
 '''.strip()
-'''
-        <desc> text of temperature </desc>
-        <text x=%(minTempShift)d y=95 font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
-        <text x=%(maxTempShift)d y=80 font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
-'''
 if not debug:
     svgtmpl=re.sub(r'<desc>.*?<\/desc>\s*','',svgtmpl)
+
+# dayAndDateText must come after cloudSvg to avoid being hidden
+dayAndDateText='''
+    <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
+    <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
+    '''.strip()
 
 def makepath(xys,frame=None,closePath=False):
     if frame:
@@ -144,8 +143,16 @@ def coordsToPath(xs,ys,closePath=False):
 
 def computeSvg(dataObjs, dic):
     magfactor=2.5
-    dic['magfactor']=magfactor
+    #dic['magfactor']=magfactor
     d=dict2obj(dic)
+    d.__dict__.update(dict(
+        magfactor=magfactor,
+        # "Mon 15" etc day and date text
+        dayofweekcolor='black' if d.isdaytime else 'none',
+        dateofmonthcolor='black' if d.isdaytime else 'none',
+        dayofweek=d.today.strftime('%a'),
+        dateofmonth=d.today.strftime('%d'),
+    ))
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
     if debug: print('blockwidth,isdaytime,foldedorun',d.blockwidth,d.isdaytime,d.foldedOrUnfolded)
     d.width,d.height=d.blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
@@ -160,11 +167,9 @@ def computeSvg(dataObjs, dic):
         blockwidth=d.blockwidth,
         svgwidth=magfactor*d.blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
         svgheight=magfactor*100,
-        dayofweekcolor='black' if d.isdaytime else 'none',
-        dateofmonthcolor='black' if d.isdaytime else 'none',
         #title=today.strftime('%a %d%b'),
-        dayofweek=d.today.strftime('%a'),
-        dateofmonth=d.today.strftime('%d'),
+        
+        
         # for oclockpath lines (9:00 etc)
         # todo short day might not have all 3 timesofday
         quarterwidth=.25*d.blockwidth,

@@ -1,4 +1,6 @@
 
+# RESUME replace all hardcoded nums twd Pane class
+
 # entry point from views.py is fcstgfx
 
 # todo missing vals could vary w/ data array so must copy xs for each ys in order to add droppoints (for straight sides of clip) on each side of each run of missing vals.
@@ -23,7 +25,7 @@ from collections import defaultdict
 from gcst.util import debug, Frame, missing, isOdd, minmax, classifyRange, Dataset
 from gcst.util import toppane,midpane,btmpane
 from gcst.readFcst import getFcstData
-from gcst.writeSvg import bargraph, coordsToPath, svgtmpl, computeSvg
+from gcst.writeSvg import bargraph, coordsToPath, svgtmpl, computeSvg, dayAndDateText
 from gcst.appinfo import appname, makepath as makeAppPath
 
 cacheData = False  # see todo's
@@ -53,10 +55,34 @@ def classifyPrecipAmt(amtPerHr):
         ])
 maxPrecipAmt=float(I.torrent)
 
+# general properties
+isvgA = 0
+isvgZ = 14
+nHrsInFullBlock = 12
+paneDescXProp = .78
+paneDescYOffPx = 6
+bigFontSize = 10
+smallFontSize = 6
+blockWdPx = 100
+blockHtPx = 33
+
+# temp properties
+minHrsToKnowMaxTemp = 9
+minTempXPx=0
+maxTempFoldXPx=11
+maxTempUnfoXPx=60
+hiTempTextColor = '#c44'
+loTempTextColor = 'blue'
+minTempYOffPx = 28
+maxTempYOffPx = 13
+
+# precip properties
+precippctX = 4
+
 class Block(object):
     def __init__(self, blockData):
         self.__dict__.update(blockData.__dict__)
-    def oclockcolor(self):
+    def paneDescColor(self):
         d=self
         isdaytime=d.isdaytime
         iscompact=d.iscompact
@@ -78,9 +104,9 @@ class Temp(object):
         self.svgtmpl='''
             <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
             <desc> text of temperature </desc>
-            <text x=%(minTempX)d y=%(minTempY)s font-size=10 fill="%(lotempcolor)s">%(minTemp)s</text>
-            <text x=%(maxTempX)d y=%(maxTempY)s font-size=10 fill="%(hitempcolor)s">%(maxTemp)s</text>
-            <text x=78 y=%(paneDescY)s font-size=6 fill="%(oclockcolor)s">temps</text>
+            <text x=%(minTempX)d y=%(minTempY)s font-size=%(bigFontSize)s fill="%(lotempcolor)s">%(minTemp)s</text>
+            <text x=%(maxTempX)d y=%(maxTempY)s font-size=%(bigFontSize)s fill="%(hitempcolor)s">%(maxTemp)s</text>
+            <text x=%(paneDescX)s y=%(paneDescY)s font-size=%(smallFontSize)s fill="%(paneDescColor)s">temps</text>
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
@@ -90,8 +116,8 @@ class Temp(object):
     def text(self):
         d=self.block
         minTempBlock,maxTempBlock=minmax(d.blkdataraw.temp)
-        knowMinTemp=(d.isvg> 0 or len(d.blkdataraw.x)==12)
-        knowMaxTemp=(d.isvg<14 or len(d.blkdataraw.x)>8)
+        knowMinTemp=(d.isvg > isvgA or len(d.blkdataraw.x) == nHrsInFullBlock)
+        knowMaxTemp=(d.isvg < isvgZ or len(d.blkdataraw.x) >= minHrsToKnowMaxTemp)
         self.vars.update(dict(
             temptip='temp(F): %s'%(str(d.blkdataraw.temp)),
             temppath='%(temppath)s',
@@ -99,10 +125,12 @@ class Temp(object):
             maxTempY='%(maxTempY)s',
             minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
             maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
-            minTempX=0,
-            maxTempX=11 if d.foldedOrUnfolded=='unfolded0' else 60,
-            hitempcolor='#c44' if d.isdaytime else 'none',
-            lotempcolor='blue' if d.isdaytime else 'none',
+            minTempX=minTempXPx,
+            maxTempX=maxTempFoldXPx if d.foldedOrUnfolded=='unfolded0' else maxTempUnfoXPx,
+            hitempcolor=hiTempTextColor if d.isdaytime else 'none',
+            lotempcolor=loTempTextColor if d.isdaytime else 'none',
+            bigFontSize=bigFontSize,
+            smallFontSize=smallFontSize,
         ))
     def pathData(self):
         d=self.block
@@ -116,10 +144,11 @@ class Temp(object):
     def svgGraph(self):
         d=self.block
         self.vars.update(dict(
-            minTempY = str(self.pane * d.height + 28),
-            maxTempY = str(self.pane * d.height + 13),
-            paneDescY=self.pane*d.height+6,
-            oclockcolor=self.block.oclockcolor(),
+            minTempY = str(self.pane * d.height + minTempYOffPx),
+            maxTempY = str(self.pane * d.height + maxTempYOffPx),
+            paneDescY=self.pane*d.height+paneDescYOffPx,
+            paneDescX=paneDescXProp*d.blockwidth,
+            paneDescColor=self.block.paneDescColor(),
         ))
 
 class Clouds(object):
@@ -129,17 +158,21 @@ class Clouds(object):
         self.svgtmpl='''
             <desc> ---- top pane: bkgd of clear sky, clipped at start and end of fcst time range </desc>
             <image xlink:href="/static/gcst/img/%(sunormoon)s.png" 
-                x=0 y=%(cloudBkgdY)d width=100 height=33 />
+                x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d />
             <desc> top: foregd of clouds, clipped accto data </desc>
             <clipPath id="pctclouds%(svgid)s" >
                 <path d="%(cloudclip)s"/>
                 </clipPath>
             <image xlink:href="/static/gcst/img/%(sunormoon)sclouds.png" title='%(cloudtip)s' 
-                x=0 y=%(cloudBkgdY)d width=100 height=33 clip-path="url(#pctclouds%(svgid)s)" />
-            <text x=78 y=%(paneDescY)s font-size=6 fill="%(oclockcolor)s">clouds</text>
+                x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d clip-path="url(#pctclouds%(svgid)s)" />
+            <text x=%(paneDescX)s y=%(paneDescY)s font-size=%(smallFontSize)s fill="%(paneDescColor)s">clouds</text>
         '''
+    def addSvg(self, svg):
+        self.svgtmpl += svg
     def initBlock(self, inn):
         self.block=Block(inn)
+        # todo ugly
+        self.vars.update(inn.__dict__)
     def renderBlock(self, blockData):
         process(self, blockData)
         return dict(cloudSvg=self.svgtmpl % self.vars)
@@ -149,6 +182,10 @@ class Clouds(object):
             svgid=d.svgid,
             sunormoon='sun' if d.isdaytime else 'moon',
             cloudtip='%%cloudiness: %s'%(str(d.blkdataraw.cloud[1:-1])),
+            smallFontSize=smallFontSize,
+            cloudBkgdX = 0,
+            blockWdPx = blockWdPx,
+            blockHtPx = blockHtPx,
         ))
     def pathData(self):
         d=self.block
@@ -163,7 +200,8 @@ class Clouds(object):
         self.vars.update(dict(
             cloudBkgdY=self.pane*d.height,
             paneDescY=self.pane*d.height+6,
-            oclockcolor=self.block.oclockcolor(),
+            paneDescX=.78*d.blockwidth,
+            paneDescColor=self.block.paneDescColor(),
         ))
 
 class Precip(object):
@@ -173,10 +211,9 @@ class Precip(object):
         self.svgtmpl='''
             <path d="%(precipclip)s" title='%(preciptip)s' stroke='#aaa' stroke-width=3 fill='none' />
             <desc> mid: rain text </desc>
-            <text x=4 y=%(precippctY)d font-size=10 fill="%(preciptextcolor)s">%(precippct)s%%</text>
-            <text x=4 y=%(preciptotY)d font-size=10 fill="%(preciptextcolor)s">%(preciptot)s"</text>
-            <path d="M 0 67 L %(svgwidth)d 67" stroke='#444' stroke-width=1 fill='none' />
-            <text x=78 y=%(paneDescY)s font-size=6 fill="%(oclockcolor)s">storms</text>
+            <text x=%(precippctX)d y=%(precippctY)d font-size=%(bigFontSize)s fill="%(preciptextcolor)s">%(precippct)s%%</text>
+            <text x=%(precippctX)d y=%(preciptotY)d font-size=%(bigFontSize)s fill="%(preciptextcolor)s">%(preciptot)s"</text>
+            <text x=%(paneDescX)s y=%(paneDescY)s font-size=%(smallFontSize)s fill="%(paneDescColor)s">storms</text>
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
@@ -194,6 +231,9 @@ class Precip(object):
             preciptextcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none',
             #preciptip='precipChance(%%): %s'%(str(d.blkdataraw.precipChance)),
             preciptip='precipAmt(in): %s'%(list(zip(d.blkdataraw.x,d.blkdataraw.precipAmt,d.blkdataprop.weather))),
+            bigFontSize=bigFontSize,
+            smallFontSize=smallFontSize,
+            precippctX = precippctX,
         ))
     def pathData(self):
         d=self.block
@@ -215,8 +255,9 @@ class Precip(object):
             precipamt=bargraph(frame,dataset.x,dataset.precipAmt,dataset.weather,svgid=d.svgid),
             precippctY=self.pane*d.height+13,
             preciptotY=self.pane*d.height+21,
+            paneDescX=.78*d.blockwidth,
             paneDescY=self.pane*d.height+6,
-            oclockcolor=self.block.oclockcolor(),
+            paneDescColor=self.block.paneDescColor(),
         ))
     def sumPrecipToString(self, amts):
         total=sum([y for y in amts if y is not missing])
@@ -231,6 +272,7 @@ cloud=Clouds(toppane)
 precip=Precip(midpane)
 temp=Temp(btmpane)
 dataObjs=[temp, cloud, precip]
+cloud.addSvg(dayAndDateText)
 
 def fcstgfx(location):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']

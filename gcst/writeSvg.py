@@ -47,12 +47,6 @@ svgtmpl='''
 if not debug:
     svgtmpl=re.sub(r'<desc>.*?<\/desc>\s*','',svgtmpl)
 
-# dayAndDateText must come after cloudSvg to avoid being hidden
-dayAndDateText='''
-    <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
-    <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
-    '''.strip()
-
 def makepath(xys,frame=None,closePath=False):
     if frame:
         xform=frame

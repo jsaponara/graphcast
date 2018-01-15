@@ -9,6 +9,7 @@
 # todo fix nbars==12 but ndivs==11, wh caused "rain12_of_11.png 404 (Not Found)"
 # todo swap folded vs unfolded; eg maxTempX should be smaller when folded, not unfolded.
 # todo before turning on cacheData: re-getnewdata if too old; remove expired cached data
+# todo svg units arent really pixels--change Px to Unit
 
 # glossary
 #   eg=such as
@@ -25,7 +26,7 @@ from collections import defaultdict
 from gcst.util import debug, Frame, missing, isOdd, minmax, classifyRange, Dataset
 from gcst.util import toppane,midpane,btmpane
 from gcst.readFcst import getFcstData
-from gcst.writeSvg import bargraph, coordsToPath, svgtmpl, computeSvg, dayAndDateText
+from gcst.writeSvg import bargraph, coordsToPath, svgtmpl, computeSvg
 from gcst.appinfo import appname, makepath as makeAppPath
 
 cacheData = False  # see todo's
@@ -166,13 +167,12 @@ class Clouds(object):
             <image xlink:href="/static/gcst/img/%(sunormoon)sclouds.png" title='%(cloudtip)s' 
                 x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d clip-path="url(#pctclouds%(svgid)s)" />
             <text x=%(paneDescX)s y=%(paneDescY)s font-size=%(smallFontSize)s fill="%(paneDescColor)s">clouds</text>
+            <desc> day and date text must come after above images to avoid being hidden </desc>
+            <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
+            <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
         '''
-    def addSvg(self, svg):
-        self.svgtmpl += svg
     def initBlock(self, inn):
         self.block=Block(inn)
-        # todo ugly
-        self.vars.update(inn.__dict__)
     def renderBlock(self, blockData):
         process(self, blockData)
         return dict(cloudSvg=self.svgtmpl % self.vars)
@@ -186,6 +186,11 @@ class Clouds(object):
             cloudBkgdX = 0,
             blockWdPx = blockWdPx,
             blockHtPx = blockHtPx,
+            # for day and date text
+            dayofweek = d.dayofweek,
+            dayofweekcolor = d.dayofweekcolor,
+            dateofmonth = d.dateofmonth,
+            dateofmonthcolor = d.dateofmonthcolor,
         ))
     def pathData(self):
         d=self.block
@@ -272,7 +277,6 @@ cloud=Clouds(toppane)
 precip=Precip(midpane)
 temp=Temp(btmpane)
 dataObjs=[temp, cloud, precip]
-cloud.addSvg(dayAndDateText)
 
 def fcstgfx(location):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']

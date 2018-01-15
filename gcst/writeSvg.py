@@ -2,7 +2,7 @@
 import re
 from itertools import count, groupby
 
-from gcst.util import minmax, missing, Frame, UnitFrame, debug, Dataset
+from gcst.util import missing, Frame, UnitFrame, debug, Dataset
 from gcst.util import toppane,midpane,btmpane, dict2obj
 
 ndivs=11

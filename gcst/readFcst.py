@@ -84,7 +84,7 @@ def getFcstData(location, cacheData):
     els=[el for el in tree.xpath('data/parameters/node()') if type(el)==etree._Element]
     def conv(typ,val):
         # todo should use typ eg for weather-conditions as well
-        return 0 if val is missing else int(val) if typ!='floating' else float(val)
+        return missing if val is missing else int(val) if typ!='floating' else float(val)
     def dataname(el):
         return '-'.join([x
             for x in (el.attrib.get('type','').replace(' ',''),el.tag.replace('-',''))

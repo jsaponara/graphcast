@@ -29,7 +29,7 @@
 			font-size:1.7em;
 		}
 		.details {
-			font-size:0.7em;
+			font-size:0.8em;
 			line-height:0;
 		}
 	</style>
@@ -54,11 +54,12 @@
 						<p class='details'>using the <a href="{{ dataurl }}">xml format</a>
 							of the National Weather Service
 							<a href="{{ tabularurl }}">data</a> and <a href="{{ humanurl }}">text</a>
-							forecast for {{ city }}, {{ state }}</p>
-						<p class='details'>also v. cool:
+							forecast</p>
+						<!--wunderground no longer shows their v. cool 10-day forecast by default; instead, the user must click on the "10-day" tab, which i dont want to explain to users who dont read html :)
+		  					p class='details'>also v. cool:
 							<a href="http://www.wunderground.com/cgi-bin/findweather/hdfForecast?query={{ zipc }}">
 							the Weather Underground forecast</a>
-							for {{ city }}, {{ state }}</p>
+							for {{ city }}, {{ state }}</p-->
 					</div>
 					<div>
 						<span class='details' id='tip' style='line-height:2em'>click to zoom/unzoom each day</span><br/>

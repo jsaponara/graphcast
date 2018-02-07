@@ -10,6 +10,7 @@
 # todo swap folded vs unfolded; eg maxTempX should be smaller when folded, not unfolded.
 # todo before turning on cacheData: re-getnewdata if too old; remove expired cached data
 # todo svg units arent really pixels--change Px to Unit
+# interesting https://www.wunderground.com/weather/api/
 
 # glossary
 #   eg=such as
@@ -284,115 +285,126 @@ def fcstgfx(location):
     '''
     data, startTimes, slots = getFcstData(location, cacheData)
 
-    nightwidthfactor=0.5  # nights are half the width of days [unfolded; folded, they are the same width]
-    fullblockwidth=100    # in pixels
+    if data:
+        nightwidthfactor=0.5  # nights are half the width of days [unfolded; folded, they are the same width]
+        fullblockwidth=100    # in pixels
 
-    startTimeA = startTimes[0]                                              # eg 0700
-    midniteA=startTimeA.replace(hour=0, minute=0, second=0, microsecond=0)  # eg 01jan/0000
-    hrsSinceMidniteA=int((startTimeA-midniteA).seconds/3600)                # eg 7
-    # daytime is from 0600 until 1800; each startidx marks the start of a 1hour interval
-    isdaytime0=(6<=hrsSinceMidniteA<18)
-    nstarttimes=len(startTimes)
+        startTimeA = startTimes[0]                                              # eg 0700
+        midniteA=startTimeA.replace(hour=0, minute=0, second=0, microsecond=0)  # eg 01jan/0000
+        hrsSinceMidniteA=int((startTimeA-midniteA).seconds/3600)                # eg 7
+        # daytime is from 0600 until 1800; each startidx marks the start of a 1hour interval
+        isdaytime0=(6<=hrsSinceMidniteA<18)
+        nstarttimes=len(startTimes)
 
-    '''compute range of quantities that need scaling'''
-    minTemp,maxTemp=minmax(data['hourly-temperature'])
-    tempRange=maxTemp-float(minTemp)
+        '''compute range of quantities that need scaling'''
+        minTemp,maxTemp=minmax(data['hourly-temperature'])
+        tempRange=maxTemp-float(minTemp)
 
-    '''
-        if user requests forecast at 9:10pm [21:10], weather.gov may return a
-        forecast that starts at 10pm [22:00], so the first [and last] 12hr block
-        of our display will be less than 12hrs wide.  here we group the indexes
-        into the startTimes array by which 12hr block they fall into.
-    '''
-    def adjustStartIdx(startidx):
-        return classifyRange(startidx,[
-            (6,   -6),  # eg 4am is  4 - -6 = 10hrs into its 12hr [nighttime] block
-            (18,   6),  # eg 9am is  9 -  6 -  3hrs into its 12hr [daytime] block
-            (24,  18),  # eg 9pm is 21 - 18 -  3hrs into its 12hr [nighttime] block
-            ])
-    floor=adjustStartIdx(hrsSinceMidniteA)
-    idxz=[(
-        (hour - floor) // 12,     # iblock: index of 12hr block starting at 6:00 (am or pm)
-        (hour - floor) % 12,      # ihours: index within 12hr block (ie within a single svg)
-        hour - hrsSinceMidniteA   # itimes: index of each hour within startTimes array
-        ) for hour in range(hrsSinceMidniteA, hrsSinceMidniteA + nstarttimes)]
-    #print(idxz)
-    #idxz at  7:00am: [(0, 1, 0), (0, 2, 1), (0, 3, 2), (0, 4, 3), ... (0, 10, 9), (0, 11, 10), <entering new block> (1, 0, 11), (1, 1, 12), (1, 2, 13), ... (13, 11, 166), (14, 0, 167)]
-    #idxz at 11:30am: [(0, 5, 0), (0, 6, 1), (0, 7, 2), (0, 8, 3), ... (0, 10, 5), (0, 11, 6), <entering new block> (1, 0, 7), (1, 1, 8), (1, 2, 9), ... (14, 3, 166), (14, 4, 167)]
-    indexIter = groupby(idxz, lambda idx:idx[0])
-
-    svgs=[]
-    xpixelsaccum=0
-    for isvg, (k, grp) in enumerate(indexIter):
-        iblocks, ihours, itimes=zip(*grp)
-        # all iblocks values should be the same [due to groupby] and equal to isvg
-        iblock=iblocks[0]
-        itime0 = itimes[0]
-        itimeEnd = itimes[-1] + 1
-        today=startTimes[itime0]
-        isdaytime=isOdd(isdaytime0 + iblock)
-        blockwidth=fullblockwidth*(len(ihours)/12.)
-        if debug: print('len(ihours),blockwidth',len(ihours),blockwidth)
-        if not isdaytime:
-            blockwidth*=nightwidthfactor
         '''
-            blk means 12hr block
-            blkdataraw holds arrays of the raw data
-            blkdataprop holds arrays of the data
-               transformed to a 0-to-1 coordinate space ['prop' is proportion]
-            blkdatapixels is arrays of the data
-               transformed to the svg [pixel] coordinate space
+            if user requests forecast at 9:10pm [21:10], weather.gov may return a
+            forecast that starts at 10pm [22:00], so the first [and last] 12hr block
+            of our display will be less than 12hrs wide.  here we group the indexes
+            into the startTimes array by which 12hr block they fall into.
         '''
-        blkdataraw=Dataset(
-            x=list(ihours),  # convert from tuple
-            # extract data for this 12hr block
-            cloud=data['total-cloudamount'][itime0:itimeEnd],
-            precipChance=data['floating-probabilityofprecipitation'][itime0:itimeEnd],
-            precipAmt=data['floating-hourlyqpf'][itime0:itimeEnd],
-            temp=data['hourly-temperature'][itime0:itimeEnd],
-            weather=data['weather'][itime0:itimeEnd],
-            )
-        # pad *clip (as opposed to *path) datasets w/ zero at both ends--these are 'droppoints'
-        # bug: data array may end in a run of missing values, so padding w/ zeroes wont result in a vertical drop cuz xs will advance from last number to first missingval.
-        blkdataraw.cloud=[0]+blkdataraw.cloud+[0]
-        blkdataprop=Dataset(
-            # bug? if len(ihours)==1 then divideByZero here; also /tempRange here, divisions elsewhere?
-            x=[(ihr-ihours[0])/float(len(ihours)-1) if len(ihours)>1 else .5
-                # [(ihr+0.5)/12 for ...  # this leaves gaps at start,end of block
-                # todo is '.5' reasonable default value for x?
-                # '-1' causes data to jump at start,end of block
-                for ihr in blkdataraw.x],
-            cloud=[pct if pct is None else pct/100.
-                for pct in blkdataraw.cloud],
-            precipChance=[pct if pct is None else pct/100.
-                for pct in blkdataraw.precipChance],
-            precipAmt=[classifyPrecipAmt(amt)/maxPrecipAmt
-                for amt in blkdataraw.precipAmt], 
-            temp=[temp if temp is None else (temp-minTemp)/tempRange
-                for temp in blkdataraw.temp],
-            weather=[types
-                for types,probs,prob in blkdataraw.weather]  # weathertips
-            )
-        # foldedOrUnfolded is merely initial state of block--block iscompact could be True or False
-        foldedOrUnfolded='z' if blockwidth<30 else 'folded0'
-        iscompact=False
-        svgid='%d%s'%(isvg,foldedOrUnfolded[0])
-        blkdatasvg=computeSvg(dataObjs, locals())
-        #print(blkdatasvg['precipamt'])
-        xpixelsaccum+=blockwidth
-        svgs.append(svgtmpl % blkdatasvg)
-        if blockwidth>=30:  # ie foldedOrUnfolded!='z'
-            iscompact=True
-            # toggle foldedOrUnfolded state
-            foldedOrUnfolded='folded0' if foldedOrUnfolded=='unfolded0' else 'unfolded0'
+        def adjustStartIdx(startidx):
+            return classifyRange(startidx,[
+                (6,   -6),  # eg 4am is  4 - -6 = 10hrs into its 12hr [nighttime] block
+                (18,   6),  # eg 9am is  9 -  6 -  3hrs into its 12hr [daytime] block
+                (24,  18),  # eg 9pm is 21 - 18 -  3hrs into its 12hr [nighttime] block
+                ])
+        floor=adjustStartIdx(hrsSinceMidniteA)
+        idxz=[(
+            (hour - floor) // 12,     # iblock: index of 12hr block starting at 6:00 (am or pm)
+            (hour - floor) % 12,      # ihours: index within 12hr block (ie within a single svg)
+            hour - hrsSinceMidniteA   # itimes: index of each hour within startTimes array
+            ) for hour in range(hrsSinceMidniteA, hrsSinceMidniteA + nstarttimes)]
+        #print(idxz)
+        #idxz at  7:00am: [(0, 1, 0), (0, 2, 1), (0, 3, 2), (0, 4, 3), ... (0, 10, 9), (0, 11, 10), <entering new block> (1, 0, 11), (1, 1, 12), (1, 2, 13), ... (13, 11, 166), (14, 0, 167)]
+        #idxz at 11:30am: [(0, 5, 0), (0, 6, 1), (0, 7, 2), (0, 8, 3), ... (0, 10, 5), (0, 11, 6), <entering new block> (1, 0, 7), (1, 1, 8), (1, 2, 9), ... (14, 3, 166), (14, 4, 167)]
+        indexIter = groupby(idxz, lambda idx:idx[0])
+
+        svgs=[]
+        xpixelsaccum=0
+        for isvg, (k, grp) in enumerate(indexIter):
+            iblocks, ihours, itimes=zip(*grp)
+            # all iblocks values should be the same [due to groupby] and equal to isvg
+            iblock=iblocks[0]
+            itime0 = itimes[0]
+            itimeEnd = itimes[-1] + 1
+            today=startTimes[itime0]
+            isdaytime=isOdd(isdaytime0 + iblock)
+            blockwidth=fullblockwidth*(len(ihours)/12.)
+            if debug: print('len(ihours),blockwidth',len(ihours),blockwidth)
+            if not isdaytime:
+                blockwidth*=nightwidthfactor
+            '''
+                blk means 12hr block
+                blkdataraw holds arrays of the raw data
+                blkdataprop holds arrays of the data
+                   transformed to a 0-to-1 coordinate space ['prop' is proportion]
+                blkdatapixels is arrays of the data
+                   transformed to the svg [pixel] coordinate space
+            '''
+            blkdataraw=Dataset(
+                x=list(ihours),  # convert from tuple
+                # extract data for this 12hr block
+                cloud=data['total-cloudamount'][itime0:itimeEnd],
+                precipChance=data['floating-probabilityofprecipitation'][itime0:itimeEnd],
+                precipAmt=data['floating-hourlyqpf'][itime0:itimeEnd],
+                temp=data['hourly-temperature'][itime0:itimeEnd],
+                weather=data['weather'][itime0:itimeEnd],
+                )
+            # pad *clip (as opposed to *path) datasets w/ zero at both ends--these are 'droppoints'
+            # bug: data array may end in a run of missing values, so padding w/ zeroes wont result in a vertical drop cuz xs will advance from last number to first missingval.
+            blkdataraw.cloud=[0]+blkdataraw.cloud+[0]
+            blkdataprop=Dataset(
+                # bug? if len(ihours)==1 then divideByZero here; also /tempRange here, divisions elsewhere?
+                x=[(ihr-ihours[0])/float(len(ihours)-1) if len(ihours)>1 else .5
+                    # [(ihr+0.5)/12 for ...  # this leaves gaps at start,end of block
+                    # todo is '.5' reasonable default value for x?
+                    # '-1' causes data to jump at start,end of block
+                    for ihr in blkdataraw.x],
+                cloud=[pct if pct is None else pct/100.
+                    for pct in blkdataraw.cloud],
+                precipChance=[pct if pct is None else pct/100.
+                    for pct in blkdataraw.precipChance],
+                precipAmt=[classifyPrecipAmt(amt)/maxPrecipAmt
+                    for amt in blkdataraw.precipAmt], 
+                temp=[temp if temp is None else (temp-minTemp)/tempRange
+                    for temp in blkdataraw.temp],
+                weather=[types
+                    for types,probs,prob in blkdataraw.weather]  # weathertips
+                )
+            # foldedOrUnfolded is merely initial state of block--block iscompact could be True or False
+            foldedOrUnfolded='z' if blockwidth<30 else 'folded0'
+            iscompact=False
             svgid='%d%s'%(isvg,foldedOrUnfolded[0])
-            blockwidth=svgwidth=25  # smaller for nights?
-            #oclockcolor='#ddd' if isdaytime and not iscompact else 'none'
-            #oclockcolor='none'
             blkdatasvg=computeSvg(dataObjs, locals())
+            #print(blkdatasvg['precipamt'])
+            xpixelsaccum+=blockwidth
             svgs.append(svgtmpl % blkdatasvg)
-    slots['svgs'] = ''.join(svgs)
-    #svgswidth=xpixelsaccum
+            if blockwidth>=30:  # ie foldedOrUnfolded!='z'
+                iscompact=True
+                # toggle foldedOrUnfolded state
+                foldedOrUnfolded='folded0' if foldedOrUnfolded=='unfolded0' else 'unfolded0'
+                svgid='%d%s'%(isvg,foldedOrUnfolded[0])
+                blockwidth=svgwidth=25  # smaller for nights?
+                #oclockcolor='#ddd' if isdaytime and not iscompact else 'none'
+                #oclockcolor='none'
+                blkdatasvg=computeSvg(dataObjs, locals())
+                svgs.append(svgtmpl % blkdatasvg)
+        slots['svgs'] = ''.join(svgs)
+        #svgswidth=xpixelsaccum
+    else:
+        slots.update(dict(
+            svgs=('<h1>Hourly data temporarily unavailable from National Weather Service</h1>'
+                  '<h3>"text" link below might work.</h3>'
+                  '<h3>Try again soon.</h3>'),
+            fcstAsOfDate='',
+            fcstAsOfTime='',
+            moreWthrInfo='',
+            debugTabl='',
+        ))
 
     return slots
 

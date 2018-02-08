@@ -25,7 +25,6 @@ from itertools import groupby
 from collections import defaultdict
 
 from gcst.util import debug, Frame, missing, isOdd, minmax, classifyRange, Dataset
-from gcst.util import toppane,midpane,btmpane
 from gcst.readFcst import getFcstData
 from gcst.writeSvg import bargraph, coordsToPath, svgtmpl, computeSvg
 from gcst.appinfo import appname, makepath as makeAppPath
@@ -114,7 +113,7 @@ class Temp(object):
         self.block=Block(inn)
     def renderBlock(self, blockData):
         process(self, blockData)
-        return dict(tempSvg=self.svgtmpl % self.vars)
+        return self.svgtmpl % self.vars
     def text(self):
         d=self.block
         minTempBlock,maxTempBlock=minmax(d.blkdataraw.temp)
@@ -176,7 +175,7 @@ class Clouds(object):
         self.block=Block(inn)
     def renderBlock(self, blockData):
         process(self, blockData)
-        return dict(cloudSvg=self.svgtmpl % self.vars)
+        return self.svgtmpl % self.vars
     def text(self):
         d=self.block
         self.vars.update(dict(
@@ -225,7 +224,7 @@ class Precip(object):
         self.block=Block(inn)
     def renderBlock(self, blockData):
         process(self, blockData)
-        return dict(precipSvg=self.svgtmpl % self.vars)
+        return self.svgtmpl % self.vars
     def text(self):
         d=self.block
         totalprecip,totalprecipAsStr=self.sumPrecipToString(d.blkdataraw.precipAmt)
@@ -274,32 +273,36 @@ class Precip(object):
             return total,str(roundedtotal)
 
 
-cloud=Clouds(toppane)
-precip=Precip(midpane)
-temp=Temp(btmpane)
-dataObjs=[temp, cloud, precip]
+# 0 is top pane, npanes - 1 is bottom pane
+cloud=Clouds(0)
+precip=Precip(1)
+temp=Temp(2)
+temp2=Temp(3)
+dataObjs=[temp, cloud, precip, temp2]
+npanes = len(dataObjs)
 
-def fcstgfx(location):
+def fcstgfx(location, npanes=npanes):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']
         for each 12hour day and night, compute two blocks, folded and unfolded
+       [npanes merely to add that var to computeSvg locals param]
     '''
     data, startTimes, slots = getFcstData(location, cacheData)
-
+    
     if data:
         nightwidthfactor=0.5  # nights are half the width of days [unfolded; folded, they are the same width]
         fullblockwidth=100    # in pixels
-
+        
         startTimeA = startTimes[0]                                              # eg 0700
         midniteA=startTimeA.replace(hour=0, minute=0, second=0, microsecond=0)  # eg 01jan/0000
         hrsSinceMidniteA=int((startTimeA-midniteA).seconds/3600)                # eg 7
         # daytime is from 0600 until 1800; each startidx marks the start of a 1hour interval
         isdaytime0=(6<=hrsSinceMidniteA<18)
         nstarttimes=len(startTimes)
-
+        
         '''compute range of quantities that need scaling'''
         minTemp,maxTemp=minmax(data['hourly-temperature'])
         tempRange=maxTemp-float(minTemp)
-
+        
         '''
             if user requests forecast at 9:10pm [21:10], weather.gov may return a
             forecast that starts at 10pm [22:00], so the first [and last] 12hr block
@@ -322,7 +325,7 @@ def fcstgfx(location):
         #idxz at  7:00am: [(0, 1, 0), (0, 2, 1), (0, 3, 2), (0, 4, 3), ... (0, 10, 9), (0, 11, 10), <entering new block> (1, 0, 11), (1, 1, 12), (1, 2, 13), ... (13, 11, 166), (14, 0, 167)]
         #idxz at 11:30am: [(0, 5, 0), (0, 6, 1), (0, 7, 2), (0, 8, 3), ... (0, 10, 5), (0, 11, 6), <entering new block> (1, 0, 7), (1, 1, 8), (1, 2, 9), ... (14, 3, 166), (14, 4, 167)]
         indexIter = groupby(idxz, lambda idx:idx[0])
-
+        
         svgs=[]
         xpixelsaccum=0
         for isvg, (k, grp) in enumerate(indexIter):

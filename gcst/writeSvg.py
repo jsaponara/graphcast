@@ -3,7 +3,7 @@ import re
 from itertools import count, groupby
 
 from gcst.util import missing, Frame, UnitFrame, debug, Dataset
-from gcst.util import toppane,midpane,btmpane, dict2obj
+from gcst.util import dict2obj
 
 ndivs=11
 
@@ -22,7 +22,7 @@ ndivs=11
 #      <rect width=40%% height=40%% style="fill:#36a3e4">
 #      instead using path
 svgtmpl='''
-    <svg id='%(iblock)d' class='%(nightorday)s %(foldedOrUnfolded)s' width=%(svgwidth)d height=%(svgheight)d viewBox="0 0 %(blockwidth)d 100" preserveAspectRatio="none">
+    <svg id='%(iblock)d' class='%(nightorday)s %(foldedOrUnfolded)s' width=%(svgwidth)d height=%(svgheight)d viewBox="0 0 %(blockwidth)d %(blockheight)d" preserveAspectRatio="none">
         <desc>background color</desc>
         <path d='M %(halfwidth).0f 0 L %(halfwidth).0f 100 '
             fill='none' stroke-width=%(svgwidth)d stroke=%(darkatnight)s/>
@@ -30,9 +30,7 @@ svgtmpl='''
         <path d='M %(quarterwidth).1f 0 L %(quarterwidth).1f 94  M %(halfwidth).1f 0 L %(halfwidth).1f 94  M %(threequarterwidth).1f 0 L %(threequarterwidth).1f 94'
             fill='none' stroke-width=1 stroke="%(oclockcolor)s"/>
         <path d="M 0 67 L %(svgwidth)d 67" stroke='#444' stroke-width=1 fill='none' />
-        %(cloudSvg)s
-        %(precipSvg)s
-        %(tempSvg)s
+        %(dataBlocks)s
         <g font-size=6 fill="%(oclockcolor)s">
             <desc> text for oclock lines </desc>
             <text y=99 x=%(quarterwidthminus)d >9:00</text>
@@ -149,6 +147,7 @@ def computeSvg(dataObjs, dic):
     ))
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
     if debug: print('blockwidth,isdaytime,foldedorun',d.blockwidth,d.isdaytime,d.foldedOrUnfolded)
+    d.blockheight = d.npanes * 33.33
     d.width,d.height=d.blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
     d.blkdatapixels=Dataset(
         x=[d.width*x for x in d.blkdataprop.x],
@@ -159,11 +158,10 @@ def computeSvg(dataObjs, dic):
         svgid=d.svgid,
         vboxwidth=d.blockwidth,
         blockwidth=d.blockwidth,
+        blockheight=d.blockheight,
         svgwidth=magfactor*d.blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
-        svgheight=magfactor*100,
+        svgheight=magfactor*d.blockheight,
         #title=today.strftime('%a %d%b'),
-        
-        
         # for oclockpath lines (9:00 etc)
         # todo short day might not have all 3 timesofday
         quarterwidth=.25*d.blockwidth,
@@ -179,7 +177,6 @@ def computeSvg(dataObjs, dic):
         iblock=d.iblock,
         nightorday='day' if d.isdaytime else 'night',
         foldedOrUnfolded=d.foldedOrUnfolded,
+        dataBlocks = '\n'.join(obj.renderBlock(d) for obj in dataObjs)
         )
-    for obj in dataObjs:
-        blkdatasvg.update(obj.renderBlock(d))
     return blkdatasvg

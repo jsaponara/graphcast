@@ -3,8 +3,6 @@ import attr
 
 debug=False
 
-toppane,midpane,btmpane=(0,1,2)
-
 def isEven(k): return k/2.==int(k/2.)
 def isOdd(k): return not isEven(k)
 

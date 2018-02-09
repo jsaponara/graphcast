@@ -98,7 +98,13 @@ def process(obj, d):
     obj.svgPath()
     obj.svgGraph()
 
-class Temp(object):
+class Layer(object): pass
+class OpaqueLayer(Layer):
+    isOpaque = True
+class TransparentLayer(Layer):
+    isOpaque = False
+
+class Temp(TransparentLayer):
     def __init__(self, pane):
         self.pane = pane
         self.vars = {}
@@ -152,7 +158,38 @@ class Temp(object):
             paneDescColor=self.block.paneDescColor(),
         ))
 
-class Clouds(object):
+class DayDate(TransparentLayer):
+    def __init__(self, pane):
+        self.pane = pane
+        self.vars = {}
+        self.svgtmpl='''
+            <text x=3.3 y=%(dayofweekY)d font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
+            <text x=6.8 y=%(dateofmonthY)d font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
+        '''
+    def initBlock(self, inn):
+        self.block=Block(inn)
+    def renderBlock(self, blockData):
+        process(self, blockData)
+        return self.svgtmpl % self.vars
+    def text(self):
+        d=self.block
+        self.vars.update(dict(
+            svgid=d.svgid,
+            dayofweek = d.dayofweek,
+            dayofweekcolor = d.dayofweekcolor,
+            dayofweekY = 10 + blockHtPx * self.pane,
+            dateofmonth = d.dateofmonth,
+            dateofmonthcolor = d.dateofmonthcolor,
+            dateofmonthY = 20 + blockHtPx * self.pane,
+        ))
+    def pathData(self):
+        pass
+    def svgPath(self):
+        pass
+    def svgGraph(self):
+        pass
+
+class Clouds(OpaqueLayer):
     def __init__(self, pane):
         self.pane = pane
         self.vars = {}
@@ -161,15 +198,12 @@ class Clouds(object):
             <image xlink:href="/static/gcst/img/%(sunormoon)s.png" 
                 x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d />
             <desc> top: foregd of clouds, clipped accto data </desc>
-            <clipPath id="pctclouds%(svgid)s" >
+            <clipPath id="pctclouds%(svgid)s%(paneid)d" >
                 <path d="%(cloudclip)s"/>
                 </clipPath>
             <image xlink:href="/static/gcst/img/%(sunormoon)sclouds.png" title='%(cloudtip)s' 
-                x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d clip-path="url(#pctclouds%(svgid)s)" />
+                x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d clip-path="url(#pctclouds%(svgid)s%(paneid)d)" />
             <text x=%(paneDescX)s y=%(paneDescY)s font-size=%(smallFontSize)s fill="%(paneDescColor)s">clouds</text>
-            <desc> day and date text must come after above images to avoid being hidden </desc>
-            <text x=3.3 y=10 font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
-            <text x=6.8 y=20 font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
         '''
     def initBlock(self, inn):
         self.block=Block(inn)
@@ -189,8 +223,10 @@ class Clouds(object):
             # for day and date text
             dayofweek = d.dayofweek,
             dayofweekcolor = d.dayofweekcolor,
+            dayofweekY = 10 + blockHtPx * self.pane,
             dateofmonth = d.dateofmonth,
             dateofmonthcolor = d.dateofmonthcolor,
+            dateofmonthY = 20 + blockHtPx * self.pane,
         ))
     def pathData(self):
         d=self.block
@@ -207,9 +243,10 @@ class Clouds(object):
             paneDescY=self.pane*d.height+6,
             paneDescX=.78*d.blockwidth,
             paneDescColor=self.block.paneDescColor(),
+            paneid = self.pane,
         ))
 
-class Precip(object):
+class Precip(TransparentLayer):
     def __init__(self, pane):
         self.pane = pane
         self.vars = {}
@@ -272,14 +309,21 @@ class Precip(object):
         else:
             return total,str(roundedtotal)
 
-
-# 0 is top pane, npanes - 1 is bottom pane
-cloud=Clouds(0)
-precip=Precip(1)
-temp=Temp(2)
-temp2=Temp(3)
-dataObjs=[temp, cloud, precip, temp2]
-npanes = len(dataObjs)
+# first entry is top pane, etc
+#from config import layout as dataObjs  [this is upcoming]
+dataObjs = [
+    [DayDate, Clouds],
+    [Precip],
+    [Temp],
+    [Temp],
+]
+conflictingOpaqueLayers = any(sum(1 for Layer in Layers if Layer.isOpaque) > 1 for Layers in dataObjs)
+if conflictingOpaqueLayers:
+    raise Exception('conflictingOpaqueLayers')
+npanes=len(dataObjs)
+isTransparent = lambda obj: -obj.isOpaque
+dataObjs=[Obj(ipane) for ipane, Objs in enumerate(dataObjs) for Obj in sorted(Objs, key = isTransparent)]
+# todo move to config.py
 
 def fcstgfx(location, npanes=npanes):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']

@@ -59,9 +59,10 @@ maxPrecipAmt=float(I.torrent)
 
 conflictingOpaqueLayers = any(sum(1 for Layer in Layers if Layer.isOpaque) > 1 for Layers in dataObjs)
 if conflictingOpaqueLayers:
+    # todo tell which layer[s] conflict
     raise Exception('conflictingOpaqueLayers')
 npanes=len(dataObjs)
-isTransparent = lambda obj: -obj.isOpaque
+isTransparent = lambda obj: not obj.isOpaque
 dataObjs=[Obj(ipane) for ipane, Objs in enumerate(dataObjs) for Obj in sorted(Objs, key = isTransparent)]
 
 def fcstgfx(location, npanes=npanes):
@@ -87,10 +88,9 @@ def fcstgfx(location, npanes=npanes):
         tempRange=maxTemp-float(minTemp)
         
         '''
-            if user requests forecast at 9:10pm [21:10], weather.gov may return a
-            forecast that starts at 10pm [22:00], so the first [and last] 12hr block
-            of our display will be less than 12hrs wide.  here we group the indexes
-            into the startTimes array by which 12hr block they fall into.
+            forecast may start at 10pm [22:00], so the first [and last] 12hr block
+            of our display will be less than 12hrs wide.  here we group the 
+            startTimes array indexes by which 12hr block they fall into.
         '''
         def adjustStartIdx(startidx):
             return classifyRange(startidx,[
@@ -182,6 +182,7 @@ def fcstgfx(location, npanes=npanes):
         slots['svgs'] = ''.join(svgs)
         #svgswidth=xpixelsaccum
     else:
+        # error, received no data from weather.gov
         slots.update(dict(
             svgs=('<h1>Hourly data temporarily unavailable from National Weather Service</h1>'
                   '<h3>"text" link below might work.</h3>'

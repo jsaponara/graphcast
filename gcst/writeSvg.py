@@ -73,7 +73,6 @@ def bargraph(frame,xs,ys,tipsz,ndivs=ndivs,**kwargs):
     bars=[]
     #for x,y,tip in zip(xs,ys,tips):
     for key,grp in groupby(zip(count(),xs,ys,tipsz),lambda ixyt:(ixyt[2],ixyt[3])):
-        #print(333,key,list(grp))
         i0,x0,y,tips=next(grp)
         theRest=list(grp)
         if theRest:
@@ -139,11 +138,6 @@ def computeSvg(dataObjs, dic):
     d=dict2obj(dic)
     d.__dict__.update(dict(
         magfactor=magfactor,
-        # "Mon 15" etc day and date text
-        dayofweekcolor='black' if d.isdaytime else 'none',
-        dateofmonthcolor='black' if d.isdaytime else 'none',
-        dayofweek=d.today.strftime('%a'),
-        dateofmonth=d.today.strftime('%d'),
     ))
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
     if debug: print('blockwidth,isdaytime,foldedorun',d.blockwidth,d.isdaytime,d.foldedOrUnfolded)

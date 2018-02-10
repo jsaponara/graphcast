@@ -96,6 +96,10 @@ def getFcstData(location, cacheData):
             # todo should use typ eg for weather-conditions as well
             return missing if val is missing else int(val) if typ!='floating' else float(val)
         def dataname(el):
+            '''
+            '<temperature type="dew point" ...>' -> 'dewpoint-temperature'
+            '<wind-speed type="gust" ...>'       -> 'gust-windspeed'
+            '''
             return '-'.join([x
                 for x in (el.attrib.get('type','').replace(' ',''),el.tag.replace('-',''))
                     if x])

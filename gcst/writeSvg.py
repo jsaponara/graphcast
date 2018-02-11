@@ -143,10 +143,8 @@ def computeSvg(dataObjs, dic):
     if debug: print('blockwidth,isdaytime,foldedorun',d.blockwidth,d.isdaytime,d.foldedOrUnfolded)
     d.blockheight = d.npanes * 33.33
     d.width,d.height=d.blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
-    d.blkdatapixels=Dataset(
-        x=[d.width*x for x in d.blkdataprop.x],
-        weather=None
-        )
+    d.xdata.svg = [d.width * x for x in d.xdata.prp]
+    #d.blkdatapixels=Dataset( x=[d.width*x for x in d.blkdataprop.x], weather=None)
     d.svgid='%d%s'%(d.isvg,d.foldedOrUnfolded[0])
     blkdatasvg=dict(
         svgid=d.svgid,

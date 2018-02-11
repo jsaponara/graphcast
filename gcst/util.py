@@ -17,7 +17,9 @@ class Dataset(object):
     # add wind?
 
 # merely for convenience: dictionary.key rather than dictionary['key']
-def dict2obj(dic):
+def dict2obj(dic = None):
+    if dic is None:
+        dic = {}
     class Obj(object):
         def __init__(self, dic):
             self.__dict__=dic

@@ -14,7 +14,13 @@ class Dataset(object):
     precipAmt = attr.ib(default=attr.Factory(list))
     temp = attr.ib(default=attr.Factory(list))
     weather = attr.ib(default=attr.Factory(list))
-    # add wind?
+
+def enum(*sequential, **named):
+    # from https://stackoverflow.com/questions/36932
+    enums = dict(zip(sequential, range(len(sequential))), **named)
+    reverse = dict((value, key) for key, value in enums.items())
+    enums['reverse_mapping'] = reverse
+    return type('Enum', (), enums)
 
 # merely for convenience: dictionary.key rather than dictionary['key']
 def dict2obj(dic = None):

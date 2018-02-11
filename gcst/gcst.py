@@ -26,7 +26,7 @@ from collections import defaultdict
 
 from gcst.util import (debug, missing, isOdd, minmax,
         classifyRange, Dataset, dict2obj)
-from gcst.dataTypes import scaleData
+from gcst.dataTypes import scaleData, checkConfig
 from gcst.readFcst import getFcstData
 from gcst.writeSvg import svgtmpl, computeSvg
 from gcst.appinfo import appname, makepath as makeAppPath
@@ -58,16 +58,6 @@ def classifyPrecipAmt(amtPerHr):
         (999,  I.torrent),
         ])
 maxPrecipAmt=float(I.torrent)
-
-def checkConfig(dataObjs):
-    conflictingOpaqueLayers = any(sum(1 for Layer in Layers if Layer.isOpaque) > 1 for Layers in dataObjs)
-    if conflictingOpaqueLayers:
-        # todo tell which layer[s] conflict
-        raise Exception('conflictingOpaqueLayers')
-    npanes=len(dataObjs)
-    isTransparent = lambda obj: not obj.isOpaque
-    dataObjs = [Obj(ipane) for ipane, Objs in enumerate(dataObjs) for Obj in sorted(Objs, key = isTransparent)]
-    return dataObjs, npanes
 
 def fcstgfx(location):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']

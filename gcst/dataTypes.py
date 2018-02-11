@@ -1,12 +1,9 @@
 
-from gcst.util import debug, Frame, missing, minmax, classifyRange
+from gcst.util import debug, Frame, missing, minmax, classifyRange, enum
 from gcst.writeSvg import bargraph, coordsToPath
 
 # todo some of these belong in config
 # general properties
-isvgA = 0
-isvgZ = 14
-nHrsInFullBlock = 12
 paneDescXProp = .78
 paneDescYOffPx = 6
 bigFontSize = 10
@@ -27,6 +24,11 @@ maxTempYOffPx = 13
 # precip properties
 precippctX = 4
 preciptotX = 4
+
+
+isvgA = 0
+isvgZ = 14
+nHrsInFullBlock = 12
 
 # todo move into a precip.py?
 # precip intensity
@@ -72,6 +74,12 @@ def scaleData(data):
                 minMaxRange[key + '-canScale'] = False
     data.update(minMaxRange)
 
+Opacity = enum(
+    textOnly = 0,    # essentially transparent
+    lineGraph = .5,  # mostly transparent, tho line may obscure text
+    clipGraph = 1    # graph formed by clipping an [opaque] image
+)
+
 class Block(object):
     def __init__(self, blockData):
         self.__dict__.update(blockData.__dict__)
@@ -85,6 +93,20 @@ class Layer(object):
         self.dataD = dataD
     def initBlock(self, inn):
         self.block=Block(inn)
+
+class TextLayer(Layer):
+    opacity = Opacity.textOnly
+    def __init__(self, dataD):
+        Layer.__init__(self, dataD, 0)
+    def renderBlock(self, blockData):
+        self.initBlock(blockData)
+        self.text()
+        return self.svgtmpl % self.vars
+    def setRawData(self, data, istart, iend):
+        pass
+
+class DataLayer(Layer):
+    opacity = Opacity.textOnly
     def setRawData(self, data, istart, iend):
         for rawkey, xmlkey in self.dataD.items():
             # eg: self.rawtemp = data['hourly-temperature'][istart:iend]
@@ -93,9 +115,17 @@ class Layer(object):
             if data.get(xmlkey + '-canScale'):
                 self.min, maxx, self.range = data[xmlkey + '-minMaxRange']
         self.rawToProp()
+    def renderBlock(self, blockData):
+        self.initBlock(blockData)
+        self.text()
+        self.populateSvg()
+        return self.svgtmpl % self.vars
+
+class GraphLayer(DataLayer):
+    def __init__(self, dataD):
+        DataLayer.__init__(self, dataD)
     def rawToProp(self):
         # adjust raw data and transform to proportion
-        # todo move to Qnty [ie out of Text]
         pass
     def prpToSvg(self):
         d=self.block
@@ -108,28 +138,34 @@ class Layer(object):
                 setattr(d, svgkey, [self.pane*d.height+d.height*(1-y) for y in dataset])
     def renderBlock(self, blockData):
         self.initBlock(blockData)
-        d=self.block
         self.text()
         self.prpToSvg()
         self.pathData()
         self.svgPath()
-        self.svgGraph()
+        self.populateSvg()
         return self.svgtmpl % self.vars
 
-class OpaqueLayer(Layer):
-    # todo add medium opacity for graphs, which can partially obscure text
-    isOpaque = True
-    # todo can avoid this boilerplate?
+class LineLayer(GraphLayer):
+    opacity = Opacity.lineGraph
     def __init__(self, dataD):
-        Layer.__init__(self, dataD)
-class TransparentLayer(Layer):
-    isOpaque = False
-    def __init__(self, dataD):
-        Layer.__init__(self, dataD)
+        GraphLayer.__init__(self, dataD)
 
-class Temp(TransparentLayer):
+class ClipLayer(GraphLayer):
+    opacity = Opacity.clipGraph
+    def __init__(self, dataD):
+        GraphLayer.__init__(self, dataD)
+
+class Description(TextLayer):
+    def __init__(self, desc):
+        TextLayer.__init__(self)
+        self.svgtmpl=('<text x=%(paneDescX)s y=%(paneDescY)s'
+            ' font-size=%(smallFontSize)s fill="%(paneDescColor)s">''' +
+            desc + '</text>'
+        )
+
+class Temp(LineLayer):
     def __init__(self, pane):
-        TransparentLayer.__init__(self, dict(rawtemp='hourly-temperature'))
+        LineLayer.__init__(self, dict(rawtemp='hourly-temperature'))
         self.pane = pane
         self.vars = {}
         self.svgtmpl='''
@@ -167,7 +203,7 @@ class Temp(TransparentLayer):
         self.vars.update(dict(
             temppath=coordsToPath(d.xdata.svg,d.svgtemp)
         ))
-    def svgGraph(self):
+    def populateSvg(self):
         d=self.block
         self.vars.update(dict(
             minTempY = str(self.pane * d.height + minTempYOffPx),
@@ -177,11 +213,11 @@ class Temp(TransparentLayer):
             paneDescColor=self.block.paneDescColor(),
         ))
 
-class Weather(TransparentLayer):
+class Weather(DataLayer):
     # this class not yet finished!
     # see also the unused bargraph output in class PrecipAmt
     def __init__(self, pane):
-        TransparentLayer.__init__(self, dict(rawweather='weather'))
+        DataLayer.__init__(self, dict(rawweather='weather'))
         self.pane = pane
         self.vars = {}
         self.svgtmpl='''
@@ -201,14 +237,10 @@ class Weather(TransparentLayer):
             weather='code in progress',
             weatherY = 10 + blockHtPx * self.pane,
         ))
-    def pathData(self):
-        pass
-    def svgPath(self):
-        pass
-    def svgGraph(self):
+    def populateSvg(self):
         pass
 
-class DayDate(TransparentLayer):
+class DayDate(TextLayer):
     def __init__(self, pane):
         self.pane = pane
         self.vars = {}
@@ -216,11 +248,6 @@ class DayDate(TransparentLayer):
             <text x=3.3 y=%(dayofweekY)d font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
             <text x=6.8 y=%(dateofmonthY)d font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
         '''
-    # todo not using rawData mechanism--should Qnty vs Text be a mixin?
-    def setRawData(self, data, istart, iend):
-        pass
-    def prpToSvg(self):
-        pass
     def text(self):
         d=self.block
         self.vars.update(dict(
@@ -232,16 +259,10 @@ class DayDate(TransparentLayer):
             dayofweekY = 10 + blockHtPx * self.pane,
             dateofmonthY = 20 + blockHtPx * self.pane,
         ))
-    def pathData(self):
-        pass
-    def svgPath(self):
-        pass
-    def svgGraph(self):
-        pass
 
-class Clouds(OpaqueLayer):
+class Clouds(ClipLayer):
     def __init__(self, pane):
-        OpaqueLayer.__init__(self, dict(rawcloud='total-cloudamount'))
+        ClipLayer.__init__(self, dict(rawcloud='total-cloudamount'))
         self.pane = pane
         self.vars = {}
         self.svgtmpl='''
@@ -282,7 +303,7 @@ class Clouds(OpaqueLayer):
         self.vars.update(dict(
             cloudclip = coordsToPath(d.xdata.svg, d.svgcloud, closePath = True)
         ))
-    def svgGraph(self):
+    def populateSvg(self):
         d=self.block
         self.vars.update(dict(
             cloudBkgdY=self.pane*d.height,
@@ -292,9 +313,9 @@ class Clouds(OpaqueLayer):
             paneid = self.pane,
         ))
 
-class PrecipProb(TransparentLayer):
+class PrecipProb(LineLayer):
     def __init__(self, pane):
-        TransparentLayer.__init__(self, dict(
+        LineLayer.__init__(self, dict(
             rawprecipprob='floating-probabilityofprecipitation',
             rawprecipamt='floating-hourlyqpf',
         ))
@@ -334,9 +355,8 @@ class PrecipProb(TransparentLayer):
         self.vars.update(dict(
             precipclip = coordsToPath(d.xdata.svg, d.svgprecipprob)
         ))
-    def svgGraph(self):
+    def populateSvg(self):
         d=self.block
-        frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
         self.vars.update(dict(
             precippctY=self.pane*d.height+13,
             paneDescX=.78*d.blockwidth,
@@ -351,9 +371,9 @@ class PrecipProb(TransparentLayer):
         else:
             return total,str(roundedtotal)
 
-class PrecipMaxProb(TransparentLayer):
+class PrecipMaxProb(DataLayer):
     def __init__(self, pane):
-        TransparentLayer.__init__(self, dict(
+        LineLayer.__init__(self, dict(
             rawprecipamt='floating-hourlyqpf',
             rawprecipprob='floating-probabilityofprecipitation',
         ))
@@ -383,17 +403,8 @@ class PrecipMaxProb(TransparentLayer):
             smallFontSize=smallFontSize,
             precippctX = precippctX,
         ))
-    def pathData(self):
+    def populateSvg(self):
         d=self.block
-        d.svgprecipprob = [self.pane*d.height+d.height*(1-y) for y in self.prpprecipprob]
-    def svgPath(self):
-        d=self.block
-        self.vars.update(dict(
-            precipclip = coordsToPath(d.xdata.svg, d.svgprecipprob)
-        ))
-    def svgGraph(self):
-        d=self.block
-        frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
         self.vars.update(dict(
             precippctY=self.pane*d.height+13,
             paneDescX=.78*d.blockwidth,
@@ -408,9 +419,9 @@ class PrecipMaxProb(TransparentLayer):
         else:
             return total,str(roundedtotal)
 
-class PrecipAmt(TransparentLayer):
+class PrecipAmt(DataLayer):
     def __init__(self, pane):
-        TransparentLayer.__init__(self, dict(
+        LineLayer.__init__(self, dict(
             rawprecipamt='floating-hourlyqpf',
             rawprecipprob='floating-probabilityofprecipitation',
             rawweather='weather',
@@ -433,6 +444,9 @@ class PrecipAmt(TransparentLayer):
     def text(self):
         d=self.block
         totalprecip,totalprecipAsStr=self.sumPrecipToString(self.rawprecipamt)
+        # bug: maxPrecipChance=max(self.rawprecipamt)
+        # current error msg: TypeError: unorderable types: MissingValue() >= int()
+        # provide msg [via pint?] like: type mismatch, prob vs amt
         maxPrecipChance=max(self.rawprecipprob)
         self.vars.update(dict(
             svgwidth=d.magfactor*d.blockwidth, # if blockwidth<30 else fullblockwidth if isdaytime else fullblockwidth*nightwidthfactor,
@@ -448,9 +462,9 @@ class PrecipAmt(TransparentLayer):
         d.svgprecipamt = [self.pane*d.height+d.height*(1-y) for y in self.prpprecipamt]
     def svgPath(self):
         pass
-    def svgGraph(self):
+    def populateSvg(self):
         d=self.block
-        frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
+        #frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
         self.vars.update(dict(
             # precipamt is not currently graphed [see self.svgtmpl]
             #precipamt = bargraph(frame,d.xdata.prp,self.prpprecipamt,self.prpweather,svgid=d.svgid),
@@ -463,4 +477,14 @@ class PrecipAmt(TransparentLayer):
             return total,'&lt;0.1'
         else:
             return total,str(roundedtotal)
+
+def checkConfig(dataObjs):
+    conflictingOpaqueLayers = any(sum(1 for Layer in Layers if Layer.opacity == Opacity.clipGraph) > 1 for Layers in dataObjs)
+    if conflictingOpaqueLayers:
+        # todo tell which layer[s] conflict
+        raise Exception('conflictingOpaqueLayers')
+    npanes=len(dataObjs)
+    transparency = lambda obj: -obj.opacity
+    dataObjs = [Obj(ipane) for ipane, Objs in enumerate(dataObjs) for Obj in sorted(Objs, key = transparency)]
+    return dataObjs, npanes
 

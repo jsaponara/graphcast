@@ -2,10 +2,8 @@
 import re
 from itertools import count, groupby
 
-from gcst.util import missing, Frame, UnitFrame, debug, Dataset
+from gcst.util import missing, Frame, UnitFrame, debug
 from gcst.util import dict2obj
-
-ndivs=11
 
 # svg template for a single 12hr block
 #    template has slots for: cloudSvg precipSvg tempSvg
@@ -65,7 +63,8 @@ def makepath(xys,frame=None,closePath=False):
         path=None  # todo somehow mark the single point we M'd to in path0
     return path
 
-def bargraph(frame,xs,ys,tipsz,ndivs=ndivs,**kwargs):
+def bargraph(frame,xs,ys,tipsz,**kwargs):
+    ndivs=11
     locals().update(kwargs)
     if len(ys)==2+len(xs):
         ys=ys[1:-1]
@@ -136,7 +135,7 @@ def computeSvg(dataObjs, dic):
     magfactor=2.5
     #dic['magfactor']=magfactor
     d=dict2obj(dic)
-    d.__dict__.update(dict(
+    d.update(dict(
         magfactor=magfactor,
     ))
     # len of blkdataraw: >0 means at least 1hr of data; >8 means data goes to at least 2pm
@@ -144,7 +143,6 @@ def computeSvg(dataObjs, dic):
     d.blockheight = d.npanes * 33.33
     d.width,d.height=d.blockwidth,33.33 # 100x100 box w/ 3 frames, each 100x33.33px
     d.xdata.svg = [d.width * x for x in d.xdata.prp]
-    #d.blkdatapixels=Dataset( x=[d.width*x for x in d.blkdataprop.x], weather=None)
     d.svgid='%d%s'%(d.isvg,d.foldedOrUnfolded[0])
     blkdatasvg=dict(
         svgid=d.svgid,

@@ -1,19 +1,9 @@
 
-import attr
-
 debug=False
+missing=None
 
 def isEven(k): return k/2.==int(k/2.)
 def isOdd(k): return not isEven(k)
-
-@attr.s
-class Dataset(object):
-    x = attr.ib(default=attr.Factory(list))
-    cloud = attr.ib(default=attr.Factory(list))
-    precipChance = attr.ib(default=attr.Factory(list))
-    precipAmt = attr.ib(default=attr.Factory(list))
-    temp = attr.ib(default=attr.Factory(list))
-    weather = attr.ib(default=attr.Factory(list))
 
 def enum(*sequential, **named):
     # from https://stackoverflow.com/questions/36932
@@ -23,21 +13,29 @@ def enum(*sequential, **named):
     return type('Enum', (), enums)
 
 # merely for convenience: dictionary.key rather than dictionary['key']
+class Obj(object):
+    def __init__(self, dic = None):
+        if dic is None:
+            dic = {}
+        self.__dict__ = dic
+    def update(self, dic):
+        try:
+            self.__dict__.update(dic)
+        except TypeError:
+            self.__dict__.update(dic.__dict__)
 def dict2obj(dic = None):
-    if dic is None:
-        dic = {}
-    class Obj(object):
-        def __init__(self, dic):
-            self.__dict__=dic
     return Obj(dic)
 
-def nonNone(seq):
-    return (item for item in seq if item is not None)
 def minmax(seq):
     # single pass thru seq; also min(seq) would return None if None is present in seq
     # todo is it possible to have a seq of all None's?
+    def nonNone(seq):
+        return (item for item in seq if item is not None)
     gen=nonNone(seq)
-    minn=maxx=next(gen)
+    try:
+        minn=maxx=next(gen)
+    except StopIteration:
+        return None, None
     for val in gen:
         if val<minn:
             minn=val
@@ -88,52 +86,4 @@ class UnitFrame:
         return x
     def ytransform(self,y):
         return y
-
-class MissingValue:
-    # a NoneType that we can configure to behave conveniently
-    # operations return self, comparisons return False
-    def __str__(self): return self.__repr__()
-    def __repr__(self): return ''
-    def __nonzero__(self): return False
-    def __add__(self,x): return x    # act like zero
-    def __sub__(self,x): return self
-    def __mul__(self,x): return self
-    def __div__(self,x): return self
-    # __trunc__ must return Integral type...can MissingValue inherit from Integral?
-    #def __trunc__(self): return self 
-    # TypeError: nb_float should return float object
-    #def __float__(self): return self
-    def __lt__(self,x): return False
-    def __gt__(self,x): return False
-    def __eq__(self,x): return False
-    def __le__(self,x): return self
-    def __abs__(self): return self
-    def __and__(self,x): return self
-    def __floordiv__(self,x): return self
-    def __invert__(self,x): return self
-    def __long__(self): return self
-    def __lshift__(self,x): return self
-    def __mod__(self,x): return self
-    def __neg__(self,x): return self
-    def __or__(self,x): return self
-    def __pos__(self,x): return self
-    def __pow__(self,x): return self
-    def __radd__(self,x): return self
-    def __rsub__(self,x): return self
-    def __rand__(self,x): return self
-    def __rdiv__(self,x): return self
-    def __rfloordiv__(self,x): return self
-    def __rlshift__(self,x): return self
-    def __rmod__(self,x): return self
-    def __rmul__(self,x): return self
-    def __ror__(self,x): return self
-    def __rpow__(self,x): return self
-    def __rrshift__(self,x): return self
-    def __rshift__(self,x): return self
-    def __rtruediv__(self,x): return self
-    def __rxor__(self,x): return self
-    def __truediv__(self,x): return self
-    def __xor__(self,x): return self
-
-missing=MissingValue()
 

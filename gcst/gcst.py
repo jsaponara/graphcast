@@ -1,15 +1,11 @@
 
-# RESUME replace all hardcoded nums twd Pane class
-
-# entry point from views.py is fcstgfx
-
 # todo missing vals could vary w/ data array so must copy xs for each ys in order to add droppoints (for straight sides of clip) on each side of each run of missing vals.
 # todo remove hi/lo temp if dont have that part of the day
 # todo end graph early if data is missing toward the end of the week.
 # todo fix nbars==12 but ndivs==11, wh caused "rain12_of_11.png 404 (Not Found)"
 # todo swap folded vs unfolded; eg maxTempX should be smaller when folded, not unfolded.
 # todo before turning on cacheData: re-getnewdata if too old; remove expired cached data
-# todo svg units arent really pixels--change Px to Unit
+# todo svg units arent really pixels--change Px suffix to Svg
 # interesting https://www.wunderground.com/weather/api/
 
 # glossary
@@ -25,46 +21,24 @@ from itertools import groupby
 from collections import defaultdict
 
 from gcst.util import (debug, missing, isOdd, minmax,
-        classifyRange, Dataset, dict2obj)
-from gcst.dataTypes import scaleData, checkConfig
+        classifyRange, Obj)
+from gcst.dataTypes import scaleData, processConfig
 from gcst.readFcst import getFcstData
 from gcst.writeSvg import svgtmpl, computeSvg
 from gcst.appinfo import appname, makepath as makeAppPath
-from gcst.config import layout as dataObjs
+from gcst.layout import layout as dataObjs
 
 cacheData = False  # see todo's
 
 appcachedir=makeAppPath('cache/%s'%(appname))
 
 
-# precip intensity
-#   accto http://theweatherprediction.com/habyhints2/434/
-#     inches per hour: light 0.1 rain 0.3 heavy 
-#     whereas drizzle & snow are measured in terms of visibility eg: heavy 1/4mile drizzle 1/2mile light
-#   we will try: mist .01 drizzle .03 lightRain .1 rain .3 heavyRain 1 downpour 3 torrent
-# I=precip intensity
-class I: none, mist, drizzle, lightRain, rain, heavyRain, downpour, torrent = range(8)
-def classifyPrecipAmt(amtPerHr):
-    if amtPerHr is missing:
-        return I.none
-    return classifyRange(amtPerHr,[
-        (.0001,I.none),
-        (.01,  I.mist),
-        (.03,  I.drizzle),
-        (.1 ,  I.lightRain),
-        (.3 ,  I.rain),
-        (1 ,   I.heavyRain),
-        (3 ,   I.downpour),
-        (999,  I.torrent),
-        ])
-maxPrecipAmt=float(I.torrent)
-
 def fcstgfx(location):
     '''compute html for a group of svg "blocks" [abbreviated 'blk']
         for each 12hour day and night, compute two blocks, folded and unfolded
     '''
     global dataObjs
-    dataObjs, npanes = checkConfig(dataObjs)
+    dataObjs, npanes = processConfig(dataObjs)
     data, startTimes, slots = getFcstData(location, cacheData)
     
     if data:
@@ -78,13 +52,12 @@ def fcstgfx(location):
         isdaytime0=(6<=hrsSinceMidniteA<18)
         nstarttimes=len(startTimes)
         
-        '''compute range of those quantities that need scaling'''
+        # compute min/max/range of those quantities that need scaling
         scaleData(data)
-        minTemp, maxTemp, tempRange = data['hourly-temperature-minMaxRange']
         
         '''
-            forecast may start at 10pm [22:00], so the first [and last] 12hr block
-            of our display will be less than 12hrs wide.  here we group the 
+            Forecast may start at 10pm [22:00], so the first [and last] 12hr block
+            of our display will be less than 12hrs wide.  Here we group the 
             startTimes array indexes by which 12hr block they fall into.
         '''
         def adjustStartIdx(startidx):
@@ -99,9 +72,10 @@ def fcstgfx(location):
             (hour - floor) % 12,      # ihours: index within 12hr block (ie within a single svg)
             hour - hrsSinceMidniteA   # itimes: index of each hour within startTimes array
             ) for hour in range(hrsSinceMidniteA, hrsSinceMidniteA + nstarttimes)]
-        #print(idxz)
-        #idxz at  7:00am: [(0, 1, 0), (0, 2, 1), (0, 3, 2), (0, 4, 3), ... (0, 10, 9), (0, 11, 10), <entering new block> (1, 0, 11), (1, 1, 12), (1, 2, 13), ... (13, 11, 166), (14, 0, 167)]
-        #idxz at 11:30am: [(0, 5, 0), (0, 6, 1), (0, 7, 2), (0, 8, 3), ... (0, 10, 5), (0, 11, 6), <entering new block> (1, 0, 7), (1, 1, 8), (1, 2, 9), ... (14, 3, 166), (14, 4, 167)]
+        # print(idxz)
+        # example output:
+        # idxz at  7:00am: [(0, 1, 0), (0, 2, 1), (0, 3, 2), (0, 4, 3), ... (0, 10, 9), (0, 11, 10), <entering new block> (1, 0, 11), (1, 1, 12), (1, 2, 13), ... (13, 11, 166), (14, 0, 167)]
+        # idxz at 11:30am: [(0, 5, 0), (0, 6, 1), (0, 7, 2), (0, 8, 3), ... (0, 10, 5), (0, 11, 6), <entering new block> (1, 0, 7), (1, 1, 8), (1, 2, 9), ... (14, 3, 166), (14, 4, 167)]
         indexIter = groupby(idxz, lambda idx:idx[0])
         
         svgs=[]
@@ -122,8 +96,10 @@ def fcstgfx(location):
                 raw data is read from xml
                 prp data is scaled from 0 to 1 ['prp' is proportion]
                 svg data is scaled to svg units
+                here we process x data [times or hours]
+                y [weather] data are processed in dataTypes.py
             '''
-            xdata=dict2obj()
+            xdata=Obj()
             xdata.raw = list(ihours)  # convert from tuple
             xdata.prp = [
                 (ihr-ihours[0])/float(len(ihours)-1) if len(ihours)>1 else .5

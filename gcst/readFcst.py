@@ -61,6 +61,9 @@ def getdata(location, dataurl, cacheData):
     return tree, starttimes
 
 def getFcstData(location, cacheData):
+    # forecast is one week, ie approx 168hours,
+    #   generally 14blocks of 12hours each, except the first and
+    #   last blocks are usually incomplete (ie are less than 12hours)
     lat,lon=(location[k] for k in 'lat lon'.split())
     slots = dict(
         # eg ringoes http://forecast.weather.gov/MapClick.php?lat=40.44659793594707&lon=-74.8513979210764&FcstType=digitalDWML

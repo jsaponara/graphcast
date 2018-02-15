@@ -39,8 +39,8 @@ Opacity = enum(
 )
 
 class Block(Obj):
-    def __init__(self, blockData):
-        self.update(blockData)
+    def __init__(self, blockProperties):
+        self.update(blockProperties)
 
 class Pane(object):
     '''manage set of data objects in this pane
@@ -77,51 +77,50 @@ def processConfig(panes):
 
 
 class Layer(object):
-    def __init__(self, pane):
+    def __init__(self, pane, dataD):
         self.pane = pane
         self.svgVars = {}
         self.svgVars.update(properties.common)
-    def initBlock(self, inn):
-        self.block=Block(inn)
-        self.block.update(properties.common)
-
-class TextLayer(Layer):
-    opacity = Opacity.textOnly
-    def __init__(self, pane):
-        Layer.__init__(self, pane)
-    def renderBlock(self, blockData):
-        self.initBlock(blockData)
-        self.text()
-        return self.svgtmpl % self.svgVars
+        self.dataD = dataD  # dataD means dataDictionary
     def setRawData(self, data, istart, iend):
-        pass
-
-class DataLayer(Layer):
-    opacity = Opacity.textOnly
-    def __init__(self, pane, dataD):
-        Layer.__init__(self, pane)
-        self.dataD = dataD
-    def setRawData(self, data, istart, iend):
+        # add hourly data of relevant types
         for rawkey, xmlkey in self.dataD.items():
             # eg: self.rawtemp = data['hourly-temperature'][istart:iend]
             # todo make this a read-only view to avoid a pointless copy
             setattr(self, rawkey,  data[xmlkey][istart:iend])
             if data.get(xmlkey + '-canScale'):
                 self.min, maxx, self.range = data[xmlkey + '-minMaxRange']
-        self.rawToProp()
-    # todo GraphLayer overrides this renderBlock, so may be cleaner to
-    #   move renderBlock to QualitativeDataLayer which is-a DataLayer
-    def renderBlock(self, blockData):
-        self.initBlock(blockData)
-        self.text()
-        self.populateSvg()
+    def initBlock(self, blockProperties):
+        self.block=Block(properties.common)
+        self.block.update(blockProperties)
+    def renderBlock(self, blockProperties = None):
+        if blockProperties:
+            self.initBlock(blockProperties)
+        self.loadSvgVars()
         return self.svgtmpl % self.svgVars
+
+class TextLayer(Layer):
+    # layer that displays text independent of hourly data
+    opacity = Opacity.textOnly
+    def __init__(self, pane):
+        dataD = {}  # a data-less layer
+        Layer.__init__(self, pane, dataD)
+
+class DataLayer(Layer):
+    opacity = Opacity.textOnly
+    def __init__(self, pane, dataD):
+        Layer.__init__(self, pane, dataD)
+    # todo GraphLayer overrides this loadSvgVars, so may be cleaner to
+    #   move loadSvgVars to QualitativeDataLayer which is-a DataLayer
+    def loadSvgVars(self):
+        self.rawToProp()
+        self.text()
 
 class GraphLayer(DataLayer):
     def __init__(self, pane, dataD):
         DataLayer.__init__(self, pane, dataD)
     def rawToProp(self):
-        # adjust raw data and transform to proportion
+        # adjust raw data and transform to proportion, if needed
         pass
     def prpToSvg(self):
         d=self.block
@@ -132,14 +131,12 @@ class GraphLayer(DataLayer):
                 svgkey = rawkey.replace('raw', 'svg')
                 dataset = getattr(self, prpkey)
                 setattr(d, svgkey, [self.pane*d.height+d.height*(1-y) for y in dataset])
-    def renderBlock(self, blockData):
-        self.initBlock(blockData)
+    def loadSvgVars(self):
         self.text()
+        self.rawToProp()
         self.prpToSvg()
         self.pathData()
         self.svgPath()
-        self.populateSvg()
-        return self.svgtmpl % self.svgVars
 
 class LineLayer(GraphLayer):
     opacity = Opacity.lineGraph
@@ -157,7 +154,7 @@ class Description(TextLayer):
         self.desc = desc
         self.svgtmpl=('<text x=%(x)s y=%(y)s'
             ' font-size=%(smallFontSize)s fill="%(textcolor)s">%(desc)s</text>')
-    def text(self):
+    def loadSvgVars(self):
         d=self.block
         d.update(properties.description)
         self.svgVars.update(dict(
@@ -196,6 +193,8 @@ class Temp(LineLayer):
             maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
             minTempX = d.minTempXPx,
             maxTempX = d.maxTempFoldXPx if d.foldedOrUnfolded == 'unfolded0' else d.maxTempUnfoXPx,
+            minTempY = str(self.pane * d.height + d.minTempYOffPx),
+            maxTempY = str(self.pane * d.height + d.maxTempYOffPx),
             hitempcolor = d.hiTempTextColor if d.isdaytime else 'none',
             lotempcolor = d.loTempTextColor if d.isdaytime else 'none',
         ))
@@ -206,12 +205,6 @@ class Temp(LineLayer):
         d=self.block
         self.svgVars.update(dict(
             temppath=coordsToPath(d.xdata.svg,d.svgtemp)
-        ))
-    def populateSvg(self):
-        d=self.block
-        self.svgVars.update(dict(
-            minTempY = str(self.pane * d.height + d.minTempYOffPx),
-            maxTempY = str(self.pane * d.height + d.maxTempYOffPx),
         ))
 
 class Weather(DataLayer):
@@ -236,8 +229,6 @@ class Weather(DataLayer):
             weather='code in progress',
             weatherY = 10 + d.blockHtPx * self.pane,
         ))
-    def populateSvg(self):
-        pass
 
 class DayDate(TextLayer):
     # provides "Fri / 12" display
@@ -247,7 +238,7 @@ class DayDate(TextLayer):
             <text x=3.3 y=%(dayofweekY)d font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
             <text x=6.8 y=%(dateofmonthY)d font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
         '''
-    def text(self):
+    def loadSvgVars(self):
         d=self.block
         self.svgVars.update(dict(
             svgid=d.svgid,
@@ -285,22 +276,20 @@ class Clouds(ClipLayer):
             svgid=d.svgid,
             sunormoon='sun' if d.isdaytime else 'moon',
             cloudtip='%%cloudiness: %s'%(str(self.rawcloud[1:-1])),
-            #smallFontSize=smallFontSize,
             cloudBkgdX = 0,
+            cloudBkgdY = self.pane*d.height,
+            paneid = self.pane,  # maybe move up to ClipLayer
         ))
     def pathData(self):
         d=self.block
         d.svgcloud = [self.pane*d.height+d.height*(1-y) for y in self.prpcloud]
     def svgPath(self):
         d=self.block
+        #print(len(d.xdata.svg),len(d.svgcloud))  # generally 12,14 or 12,16--how 16??
+        # how did clouds work before without padding xdata to reflect padding w/ zeroes in rawToProp?
+        xdata = [d.xdata.svg[0]] + d.xdata.svg + [d.xdata.svg[-1]]
         self.svgVars.update(dict(
-            cloudclip = coordsToPath(d.xdata.svg, d.svgcloud, closePath = True)
-        ))
-    def populateSvg(self):
-        d=self.block
-        self.svgVars.update(dict(
-            cloudBkgdY=self.pane*d.height,
-            paneid = self.pane,
+            cloudclip = coordsToPath(xdata, d.svgcloud, closePath = True)
         ))
 
 class PrecipProb(LineLayer):
@@ -308,7 +297,6 @@ class PrecipProb(LineLayer):
     def __init__(self, pane):
         LineLayer.__init__(self, pane, dict(
             rawprecipprob='floating-probabilityofprecipitation',
-            rawprecipamt='floating-hourlyqpf',
         ))
         self.svgtmpl='''
             <path d="%(precipclip)s" title='%(preciptip)s' stroke='#aaa' stroke-width=3 fill='none' />
@@ -317,15 +305,13 @@ class PrecipProb(LineLayer):
         self.prpprecipprob=[
             pct if pct is None else pct/100.
                 for pct in self.rawprecipprob]
-        self.prpprecipamt=[
-            classifyPrecipAmt(amt)/maxPrecipAmt
-                for amt in self.rawprecipamt] 
     def text(self):
         d=self.block
         d.update(properties.precip)
         self.svgVars.update(dict(
             #preciptip='precipChance(%%): %s'%(str(self.rawprecipprob)),
             preciptip='',
+            precippctY = self.pane*d.height+13,
         ))
     def pathData(self):
         d=self.block
@@ -334,11 +320,6 @@ class PrecipProb(LineLayer):
         d=self.block
         self.svgVars.update(dict(
             precipclip = coordsToPath(d.xdata.svg, d.svgprecipprob)
-        ))
-    def populateSvg(self):
-        d=self.block
-        self.svgVars.update(dict(
-            precippctY=self.pane*d.height+13,
         ))
 
 class PrecipMaxProb(DataLayer):
@@ -369,11 +350,7 @@ class PrecipMaxProb(DataLayer):
             #preciptip='precipChance(%%): %s'%(str(self.rawprecipprob)),
             preciptip='',
             x = d.precippctX,
-        ))
-    def populateSvg(self):
-        d=self.block
-        self.svgVars.update(dict(
-            y=self.pane*d.height+13,
+            y = self.pane*d.height+13,
         ))
 
 class PrecipAmt(DataLayer):
@@ -400,27 +377,15 @@ class PrecipAmt(DataLayer):
         d=self.block
         d.update(properties.precip)
         totalprecip, totalprecipAsStr = sumPrecipToString(self.rawprecipamt)
-        # bug: maxPrecipChance=max(self.rawprecipamt)
-        # current error msg: TypeError: unorderable types: MissingValue() >= int()
-        # provide msg [via pint?] like: type mismatch, prob vs amt
+        # former bug: maxPrecipChance = max(self.rawprecipamt)
+        #   current error msg: TypeError: unorderable types: NoneType() > float()
+        #   provide msg [via pint?] like: type mismatch, probability vs amount
         maxPrecipChance=max(self.rawprecipprob)
         self.svgVars.update(dict(
             preciptot = totalprecipAsStr,
             textcolor='black' if totalprecip>=.1 or maxPrecipChance>=20 else 'none',
-            preciptip='precipAmt(in): %s'%(list(zip(d.xdata.raw,self.rawprecipamt,self.prpweather))),
+            preciptip='precipAmt(in): %s'%(list(zip(d.xdata.raw, self.rawprecipamt, self.prpweather))),
             x = d.preciptotX,
-        ))
-    def pathData(self):
-        d=self.block
-        d.svgprecipamt = [self.pane*d.height+d.height*(1-y) for y in self.prpprecipamt]
-    def svgPath(self):
-        pass
-    def populateSvg(self):
-        d=self.block
-        #frame=Frame(x=0,y=self.pane*d.height,width=d.width,height=d.height)
-        self.svgVars.update(dict(
-            # precipamt is not currently graphed [see self.svgtmpl]
-            #precipamt = bargraph(frame,d.xdata.prp,self.prpprecipamt,self.prpweather,svgid=d.svgid),
-            y=self.pane*d.height+21,
+            y = self.pane*d.height+21,
         ))
 

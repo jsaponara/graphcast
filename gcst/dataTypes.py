@@ -1,9 +1,9 @@
 
 from gcst.util import (debug, Frame, missing,
-        minmax, classifyRange, enum, Obj)
+        minmax, classifyRange, enum, Obj, normalizePercentage)
 from gcst.writeSvg import bargraph, coordsToPath
 from gcst.properties import properties
-from gcst.precip import classifyPrecipAmt, maxPrecipAmt, sumPrecipToString
+from gcst.precip import normalizePrecipAmt, sumPrecipToString
 
 properties = Obj(properties)
 
@@ -11,25 +11,34 @@ isvgA = 0
 isvgZ = 14
 nHrsInFullBlock = 12
 
-datatypesThatNeedScaling = (
-    'temperature',
-    'windspeed',
+# some datatypes, like percentages, are naturally scaled.
+# others, like temperature, we scale between the extremes that occur during the forecast.
+datatypesThatNeedScaling = dict(
+    # temperature needs to be scaled but has no intrinsic floor or ceiling
+    temperature = dict(),
+
+    # for windspeed, unlike temperature, zero should always be the minimum on the graph.
+    # use 'windspeed', not 'wind', to avoid matching 'windchill', which is a temperature
+    windspeed = dict(floor = 0),
 )
+
 def scaleData(data):
     minMaxRange = {}
     for key, dataset in data.items():
-        if any(datatype in key for datatype in datatypesThatNeedScaling):
-            minn,maxx=minmax(dataset)
-            # unlike temperature, for windspeed zero should always be the minimum on the graph
-            # careful to not match 'windchill', which is a temperature
-            if 'windspeed' in key:
-                minn = 0
-            if minn is not missing and maxx is not missing:
-                dataRange=maxx-float(minn)
-                minMaxRange[key + '-minMaxRange'] = minn, maxx, dataRange
-                minMaxRange[key + '-canScale'] = minn != maxx
-            else:
-                minMaxRange[key + '-canScale'] = False
+        for datatype, limits in datatypesThatNeedScaling.items():
+            if datatype in key:
+                break
+        else:
+            continue
+        minn, maxx = minmax(dataset)
+        if 'floor' in limits:
+            minn = limits['floor']
+        if minn is not missing and maxx is not missing:
+            dataRange = maxx - float(minn)
+            minMaxRange[key + '-minMaxRange'] = minn, maxx, dataRange
+            minMaxRange[key + '-canScale'] = minn != maxx
+        else:
+            minMaxRange[key + '-canScale'] = False
     data.update(minMaxRange)
 
 Opacity = enum(
@@ -110,15 +119,13 @@ class DataLayer(Layer):
     opacity = Opacity.textOnly
     def __init__(self, pane, dataD):
         Layer.__init__(self, pane, dataD)
-    # todo GraphLayer overrides this loadSvgVars, so may be cleaner to
-    #   move loadSvgVars to QualitativeDataLayer which is-a DataLayer
     def loadSvgVars(self):
         self.rawToProp()
         self.text()
 
-class GraphLayer(DataLayer):
+class GraphLayer(Layer):
     def __init__(self, pane, dataD):
-        DataLayer.__init__(self, pane, dataD)
+        Layer.__init__(self, pane, dataD)
     def rawToProp(self):
         # adjust raw data and transform to proportion, if needed
         pass
@@ -302,9 +309,7 @@ class PrecipProb(LineLayer):
             <path d="%(precipclip)s" title='%(preciptip)s' stroke='#aaa' stroke-width=3 fill='none' />
         '''
     def rawToProp(self):
-        self.prpprecipprob=[
-            pct if pct is None else pct/100.
-                for pct in self.rawprecipprob]
+        self.prpprecipprob = normalizePercentage(self.rawprecipprob)
     def text(self):
         d=self.block
         d.update(properties.precip)
@@ -333,12 +338,8 @@ class PrecipMaxProb(DataLayer):
             <text x=%(x)d y=%(y)d font-size=%(bigFontSize)s fill="%(textcolor)s">%(precippct)s%%</text>
         '''
     def rawToProp(self):
-        self.prpprecipprob=[
-            pct if pct is None else pct/100.
-                for pct in self.rawprecipprob]
-        self.prpprecipamt=[
-            classifyPrecipAmt(amt)/maxPrecipAmt
-                for amt in self.rawprecipamt] 
+        self.prpprecipprob = normalizePercentage(self.rawprecipprob)
+        self.prpprecipamt = normalizePrecipAmt(self.rawprecipamt)
     def text(self):
         d=self.block
         d.update(properties.precip)
@@ -365,12 +366,8 @@ class PrecipAmt(DataLayer):
             <text x=%(x)d y=%(y)d font-size=%(bigFontSize)s fill="%(textcolor)s">%(preciptot)s"</text>
         '''
     def rawToProp(self):
-        self.prpprecipprob=[
-            pct if pct is None else pct/100.
-                for pct in self.rawprecipprob]
-        self.prpprecipamt=[
-            classifyPrecipAmt(amt)/maxPrecipAmt
-                for amt in self.rawprecipamt] 
+        self.prpprecipprob = normalizePercentage(self.rawprecipprob)
+        self.prpprecipamt = normalizePrecipAmt(self.rawprecipamt)
         self.prpweather = [' and '.join(prob + ' of ' + typ for prob, typ in zip(probs,types))
                 for types,probs,prob in self.rawweather]
     def text(self):

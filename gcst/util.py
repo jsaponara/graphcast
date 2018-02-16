@@ -43,6 +43,10 @@ def minmax(seq):
             maxx=val
     return minn,maxx
 
+def normalizePercentage(rawpct):
+    return [pct if pct is None else pct/100.
+        for pct in rawpct]
+
 def classifyRange(amt,classes):
     '''
         >>> classifyRange(2.4, [(1, 'a'), (2, 'b'), (3, 'c')])

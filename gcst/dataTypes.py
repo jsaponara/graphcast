@@ -137,7 +137,10 @@ class GraphLayer(Layer):
                 prpkey = rawkey.replace('raw', 'prp')
                 svgkey = rawkey.replace('raw', 'svg')
                 dataset = getattr(self, prpkey)
-                setattr(d, svgkey, [self.pane*d.height+d.height*(1-y) for y in dataset])
+                setattr(d, svgkey, [y if y is None else self.pane*d.height+d.height*(1-y) for y in dataset])
+    def computePathData(self, prpData):
+        d = self.block
+        return [y if y is None else self.pane * d.height + d.height * (1 - y) for y in prpData]
     def loadSvgVars(self):
         self.text()
         self.rawToProp()
@@ -207,7 +210,7 @@ class Temp(LineLayer):
         ))
     def pathData(self):
         d=self.block
-        d.svgtemp = [self.pane*d.height+d.height*(1-y) for y in self.prptemp]
+        d.svgtemp = self.computePathData(self.prptemp)
     def svgPath(self):
         d=self.block
         self.svgVars.update(dict(
@@ -289,7 +292,7 @@ class Clouds(ClipLayer):
         ))
     def pathData(self):
         d=self.block
-        d.svgcloud = [self.pane*d.height+d.height*(1-y) for y in self.prpcloud]
+        d.svgcloud = self.computePathData(self.prpcloud)
     def svgPath(self):
         d=self.block
         #print(len(d.xdata.svg),len(d.svgcloud))  # generally 12,14 or 12,16--how 16??
@@ -320,7 +323,7 @@ class PrecipProb(LineLayer):
         ))
     def pathData(self):
         d=self.block
-        d.svgprecipprob = [self.pane*d.height+d.height*(1-y) for y in self.prpprecipprob]
+        d.svgprecipprob = self.computePathData(self.prpprecipprob)
     def svgPath(self):
         d=self.block
         self.svgVars.update(dict(

@@ -1,4 +1,5 @@
 
+from abc import ABCMeta, abstractmethod
 from gcst.util import (debug, Frame, missing,
         minmax, classifyRange, enum, Obj, normalizePercentage)
 from gcst.writeSvg import bargraph, coordsToPath
@@ -11,6 +12,8 @@ isvgA = 0
 isvgZ = 14
 nHrsInFullBlock = 12
 
+# todo add list of all datatypes in weather.gov xml
+# todo explain xml-raw-prop-svg/px progression [alr elsewhere?]
 # some datatypes, like percentages, are naturally scaled.
 # others, like temperature, we scale between the extremes that occur during the forecast.
 datatypesThatNeedScaling = dict(
@@ -54,7 +57,7 @@ class Block(Obj):
 class Pane(object):
     '''manage set of data objects in this pane
         and associate a description
-        [currently displayed only when block is unfolded]
+        [which currently is displayed only when block is unfolded]
         '''
     def __init__(self, objs, desc = ''):
         self.desc = desc
@@ -67,6 +70,7 @@ class Pane(object):
             descFactory = lambda ipane: Description(ipane, desc)
             descFactory.opacity = Opacity.textOnly
             self.objs.append(descFactory)
+    # todo @property?
     def dataObjs(self):
         return self.objs
     def checkLayers(self):
@@ -81,19 +85,27 @@ def processConfig(panes):
     dataObjs = [
         Obj(ipane)
         for ipane, pane in enumerate(panes)
+        # todo pane.layers?
         for Obj in sorted(pane.dataObjs(), key = transparency)]
     return dataObjs, npanes
 
 
 class Layer(object):
-    def __init__(self, pane, dataD):
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def loadSvgVars(self):
+        pass
+
+    def __init__(self, pane, dataKeys):
         self.pane = pane
         self.svgVars = {}
         self.svgVars.update(properties.common)
-        self.dataD = dataD  # dataD means dataDictionary
+        # dataKeys maps raw data keys to xml keys used in this layer
+        self.dataKeys = dataKeys
     def setRawData(self, data, istart, iend):
         # add hourly data of relevant types
-        for rawkey, xmlkey in self.dataD.items():
+        for rawkey, xmlkey in self.dataKeys.items():
             # eg: self.rawtemp = data['hourly-temperature'][istart:iend]
             # todo make this a read-only view to avoid a pointless copy
             setattr(self, rawkey,  data[xmlkey][istart:iend])
@@ -112,26 +124,28 @@ class TextLayer(Layer):
     # layer that displays text independent of hourly data
     opacity = Opacity.textOnly
     def __init__(self, pane):
-        dataD = {}  # a data-less layer
-        Layer.__init__(self, pane, dataD)
+        dataKeys = {}  # a data-less layer
+        Layer.__init__(self, pane, dataKeys)
 
 class DataLayer(Layer):
+    # layer that displays text summarizing hourly data
     opacity = Opacity.textOnly
-    def __init__(self, pane, dataD):
-        Layer.__init__(self, pane, dataD)
+    def __init__(self, pane, dataKeys):
+        Layer.__init__(self, pane, dataKeys)
     def loadSvgVars(self):
         self.rawToProp()
         self.text()
 
 class GraphLayer(Layer):
-    def __init__(self, pane, dataD):
-        Layer.__init__(self, pane, dataD)
+    # layer that displays graph of hourly data
+    def __init__(self, pane, dataKeys):
+        Layer.__init__(self, pane, dataKeys)
     def rawToProp(self):
         # adjust raw data and transform to proportion, if needed
         pass
     def prpToSvg(self):
         d=self.block
-        for rawkey in self.dataD:
+        for rawkey in self.dataKeys:
             # todo replace with isNumeric[data[rawkey]] test
             if rawkey != 'rawweather':
                 prpkey = rawkey.replace('raw', 'prp')
@@ -149,14 +163,16 @@ class GraphLayer(Layer):
         self.svgPath()
 
 class LineLayer(GraphLayer):
+    # GraphLayer that graphs hourly data as line
     opacity = Opacity.lineGraph
-    def __init__(self, pane, dataD):
-        GraphLayer.__init__(self, pane, dataD)
+    def __init__(self, pane, dataKeys):
+        GraphLayer.__init__(self, pane, dataKeys)
 
 class ClipLayer(GraphLayer):
+    # GraphLayer that graphs hourly data as clipped image
     opacity = Opacity.clipGraph
-    def __init__(self, pane, dataD):
-        GraphLayer.__init__(self, pane, dataD)
+    def __init__(self, pane, dataKeys):
+        GraphLayer.__init__(self, pane, dataKeys)
 
 class Description(TextLayer):
     def __init__(self, pane, desc):
@@ -177,6 +193,49 @@ class Description(TextLayer):
         d=self.block
         return '#bbb' if (
             d.isdaytime and not d.iscompact and d.blockwidth==d.fullblockwidth) else 'none'
+
+class TempText(TextLayer):
+    def __init__(self, pane):
+        LineLayer.__init__(self, pane, dict(rawtemp='hourly-temperature'))
+        self.svgtmpl='''
+            <text x=%(minTempX)d y=%(minTempY)s font-size=%(bigFontSize)s fill="%(lotempcolor)s">%(minTemp)s</text>
+            <text x=%(maxTempX)d y=%(maxTempY)s font-size=%(bigFontSize)s fill="%(hitempcolor)s">%(maxTemp)s</text>
+        '''
+    def text(self):
+        d=self.block
+        d.update(properties.temp)
+        minTempBlock,maxTempBlock=minmax(self.rawtemp)
+        knowMinTemp=(d.isvg > isvgA or len(d.xdata.raw) == nHrsInFullBlock)
+        knowMaxTemp=(d.isvg < isvgZ or len(d.xdata.raw) >= d.minHrsToKnowMaxTemp)
+        self.svgVars.update(dict(
+            minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
+            maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
+            minTempX = d.minTempXPx,
+            maxTempX = d.maxTempFoldXPx if d.foldedOrUnfolded == 'unfolded0' else d.maxTempUnfoXPx,
+            minTempY = str(self.pane * d.height + d.minTempYOffPx),
+            maxTempY = str(self.pane * d.height + d.maxTempYOffPx),
+            hitempcolor = d.hiTempTextColor if d.isdaytime else 'none',
+            lotempcolor = d.loTempTextColor if d.isdaytime else 'none',
+        ))
+
+class TempGraph(LineLayer):
+    def __init__(self, pane):
+        LineLayer.__init__(self, pane, dict(rawtemp='hourly-temperature'))
+        self.svgtmpl='''
+            <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
+        '''
+    def rawToProp(me):
+        me.prptemp=[
+            (temp-me.min)/me.range if temp is not None else temp
+                for temp in me.rawtemp]
+    def pathData(self):
+        d=self.block
+        d.svgtemp = self.computePathData(self.prptemp)
+    def svgPath(self):
+        d=self.block
+        self.svgVars.update(dict(
+            temppath=coordsToPath(d.xdata.svg,d.svgtemp)
+        ))
 
 class Temp(LineLayer):
     # todo split Temp into graph vs max/min toward more modularity

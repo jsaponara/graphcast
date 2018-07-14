@@ -6,6 +6,7 @@ from gcst.dataTypes import (Pane, DayDate, Clouds, PrecipAmt,
 layout = [
     Pane([DayDate, Clouds], 'clouds'),
     Pane([PrecipAmt, PrecipProb, PrecipMaxProb], 'storms'),
+    #Pane([TempText, TempGraph], 'temp'),
     Pane([Temp], 'temp'),
 ]
 

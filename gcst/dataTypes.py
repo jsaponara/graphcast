@@ -90,8 +90,8 @@ def processConfig(panes):
     return dataObjs, npanes
 
 
-class Layer(object):
-    __metaclass__ = ABCMeta
+#class Layer(object): __metaclass__ = ABCMeta  # py2
+class Layer(metaclass=ABCMeta):
 
     @abstractmethod
     def loadSvgVars(self):
@@ -165,14 +165,10 @@ class GraphLayer(Layer):
 class LineLayer(GraphLayer):
     # GraphLayer that graphs hourly data as line
     opacity = Opacity.lineGraph
-    def __init__(self, pane, dataKeys):
-        GraphLayer.__init__(self, pane, dataKeys)
 
 class ClipLayer(GraphLayer):
     # GraphLayer that graphs hourly data as clipped image
     opacity = Opacity.clipGraph
-    def __init__(self, pane, dataKeys):
-        GraphLayer.__init__(self, pane, dataKeys)
 
 class Description(TextLayer):
     def __init__(self, pane, desc):
@@ -201,7 +197,7 @@ class TempText(TextLayer):
             <text x=%(minTempX)d y=%(minTempY)s font-size=%(bigFontSize)s fill="%(lotempcolor)s">%(minTemp)s</text>
             <text x=%(maxTempX)d y=%(maxTempY)s font-size=%(bigFontSize)s fill="%(hitempcolor)s">%(maxTemp)s</text>
         '''
-    def text(self):
+    def loadSvgVars(self):
         d=self.block
         d.update(properties.temp)
         minTempBlock,maxTempBlock=minmax(self.rawtemp)
@@ -236,44 +232,9 @@ class TempGraph(LineLayer):
         self.svgVars.update(dict(
             temppath=coordsToPath(d.xdata.svg,d.svgtemp)
         ))
-
-class Temp(LineLayer):
-    # todo split Temp into graph vs max/min toward more modularity
-    def __init__(self, pane):
-        LineLayer.__init__(self, pane, dict(rawtemp='hourly-temperature'))
-        self.svgtmpl='''
-            <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
-            <text x=%(minTempX)d y=%(minTempY)s font-size=%(bigFontSize)s fill="%(lotempcolor)s">%(minTemp)s</text>
-            <text x=%(maxTempX)d y=%(maxTempY)s font-size=%(bigFontSize)s fill="%(hitempcolor)s">%(maxTemp)s</text>
-        '''
-    def rawToProp(me):
-        me.prptemp=[
-            (temp-me.min)/me.range if temp is not None else temp
-                for temp in me.rawtemp]
     def text(self):
-        d=self.block
-        d.update(properties.temp)
-        minTempBlock,maxTempBlock=minmax(self.rawtemp)
-        knowMinTemp=(d.isvg > isvgA or len(d.xdata.raw) == nHrsInFullBlock)
-        knowMaxTemp=(d.isvg < isvgZ or len(d.xdata.raw) >= d.minHrsToKnowMaxTemp)
         self.svgVars.update(dict(
             temptip='temp(F): %s'%(str(self.rawtemp)),
-            minTemp=str(minTempBlock)+r'&deg;' if minTempBlock and knowMinTemp else '',
-            maxTemp=str(maxTempBlock)+r'&deg;' if maxTempBlock and knowMaxTemp else '',
-            minTempX = d.minTempXPx,
-            maxTempX = d.maxTempFoldXPx if d.foldedOrUnfolded == 'unfolded0' else d.maxTempUnfoXPx,
-            minTempY = str(self.pane * d.height + d.minTempYOffPx),
-            maxTempY = str(self.pane * d.height + d.maxTempYOffPx),
-            hitempcolor = d.hiTempTextColor if d.isdaytime else 'none',
-            lotempcolor = d.loTempTextColor if d.isdaytime else 'none',
-        ))
-    def pathData(self):
-        d=self.block
-        d.svgtemp = self.computePathData(self.prptemp)
-    def svgPath(self):
-        d=self.block
-        self.svgVars.update(dict(
-            temppath=coordsToPath(d.xdata.svg,d.svgtemp)
         ))
 
 class Weather(DataLayer):

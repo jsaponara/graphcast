@@ -13,6 +13,7 @@ from gcst.locate import find
 from gcst.gcst import fcstgfx
 
 testZip = '08540'
+#testZip = '29681'
 
 class SimpleTest(TestCase):
     def test_locate_find(self):

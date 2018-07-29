@@ -125,13 +125,13 @@ class TextLayer(Layer):
     opacity = Opacity.textOnly
     def __init__(self, pane):
         dataKeys = {}  # a data-less layer
-        Layer.__init__(self, pane, dataKeys)
+        super(TextLayer, self).__init__(pane, dataKeys)
 
 class DataLayer(Layer):
     # layer that displays text summarizing hourly data
     opacity = Opacity.textOnly
     def __init__(self, pane, dataKeys):
-        Layer.__init__(self, pane, dataKeys)
+        super(DataLayer, self).__init__(pane, dataKeys)
     def loadSvgVars(self):
         self.rawToProp()
         self.text()
@@ -139,7 +139,7 @@ class DataLayer(Layer):
 class GraphLayer(Layer):
     # layer that displays graph of hourly data
     def __init__(self, pane, dataKeys):
-        Layer.__init__(self, pane, dataKeys)
+        super(GraphLayer, self).__init__(pane, dataKeys)
     def rawToProp(self):
         # adjust raw data and transform to proportion, if needed
         pass
@@ -172,7 +172,7 @@ class ClipLayer(GraphLayer):
 
 class Description(TextLayer):
     def __init__(self, pane, desc):
-        TextLayer.__init__(self, pane)
+        super(Description, self).__init__(pane)
         self.desc = desc
         self.svgtmpl=('<text x=%(x)s y=%(y)s'
             ' font-size=%(smallFontSize)s fill="%(textcolor)s">%(desc)s</text>')
@@ -190,9 +190,10 @@ class Description(TextLayer):
         return '#bbb' if (
             d.isdaytime and not d.iscompact and d.blockwidth==d.fullblockwidth) else 'none'
 
-class TempText(TextLayer):
+# todo create MaxMinLayer, SumLayer, etc?
+class TempText(DataLayer):
     def __init__(self, pane):
-        LineLayer.__init__(self, pane, dict(rawtemp='hourly-temperature'))
+        super(TempText, self).__init__(pane, dict(rawtemp='hourly-temperature'))
         self.svgtmpl='''
             <text x=%(minTempX)d y=%(minTempY)s font-size=%(bigFontSize)s fill="%(lotempcolor)s">%(minTemp)s</text>
             <text x=%(maxTempX)d y=%(maxTempY)s font-size=%(bigFontSize)s fill="%(hitempcolor)s">%(maxTemp)s</text>
@@ -216,7 +217,7 @@ class TempText(TextLayer):
 
 class TempGraph(LineLayer):
     def __init__(self, pane):
-        LineLayer.__init__(self, pane, dict(rawtemp='hourly-temperature'))
+        super(TempGraph, self).__init__(pane, dict(rawtemp='hourly-temperature'))
         self.svgtmpl='''
             <path fill='none' stroke-width=3 stroke="#faa" title='%(temptip)s' d='%(temppath)s' />
         '''
@@ -241,7 +242,7 @@ class Weather(DataLayer):
     # this class is not yet finished!
     # see also the unused bargraph output in class PrecipAmt
     def __init__(self, pane):
-        DataLayer.__init__(self, dict(rawweather='weather'))
+        super(Weather, self).__init__(dict(rawweather='weather'))
         self.svgtmpl='''
             <text x=6.8 y=%(weatherY)d font-size=4 fill="%(weathercolor)s">%(weather)s</text>
         '''
@@ -263,7 +264,7 @@ class Weather(DataLayer):
 class DayDate(TextLayer):
     # provides "Fri / 12" display
     def __init__(self, pane):
-        TextLayer.__init__(self, pane)
+        super(DayDate, self).__init__(pane)
         self.svgtmpl='''
             <text x=3.3 y=%(dayofweekY)d font-size=12 fill="%(dayofweekcolor)s">%(dayofweek)s</text>
             <text x=6.8 y=%(dateofmonthY)d font-size=12 fill="%(dateofmonthcolor)s">%(dateofmonth)s</text>
@@ -283,7 +284,7 @@ class DayDate(TextLayer):
 class Clouds(ClipLayer):
     # graph %clouds via clipping cloudy image over clear sky image
     def __init__(self, pane):
-        ClipLayer.__init__(self, pane, dict(rawcloud='total-cloudamount'))
+        super(Clouds, self).__init__(pane, dict(rawcloud='total-cloudamount'))
         self.svgtmpl='''
             <image xlink:href="/static/gcst/img/%(sunormoon)s.png" 
                 x=%(cloudBkgdX)d y=%(cloudBkgdY)d width=%(blockWdPx)d height=%(blockHtPx)d />
@@ -322,10 +323,12 @@ class Clouds(ClipLayer):
             cloudclip = coordsToPath(xdata, d.svgcloud, closePath = True)
         ))
 
+# todo PrecipProb(SimpleLineLayer)?
 class PrecipProb(LineLayer):
     # line graph of precip probability
     def __init__(self, pane):
-        LineLayer.__init__(self, pane, dict(
+        super(PrecipProb, self).__init__(pane, dict(
+            # todo rawDataKey = ...
             rawprecipprob='floating-probabilityofprecipitation',
         ))
         self.svgtmpl='''
@@ -350,10 +353,11 @@ class PrecipProb(LineLayer):
             precipclip = coordsToPath(d.xdata.svg, d.svgprecipprob)
         ))
 
+# todo PrecipMaxProb(MaxDataLayer)?
 class PrecipMaxProb(DataLayer):
     # display greatest hourly precip probability for the block
     def __init__(self, pane):
-        DataLayer.__init__(self, pane, dict(
+        super(PrecipMaxProb, self).__init__(pane, dict(
             rawprecipamt='floating-hourlyqpf',
             rawprecipprob='floating-probabilityofprecipitation',
         ))
@@ -377,10 +381,11 @@ class PrecipMaxProb(DataLayer):
             y = self.pane*d.height+13,
         ))
 
+# todo PrecipAmt(TotalDataLayer)?
 class PrecipAmt(DataLayer):
     # display total precip for the block [ie for the day or the night]
     def __init__(self, pane):
-        DataLayer.__init__(self, pane, dict(
+        super(PrecipAmt, self).__init__(pane, dict(
             rawprecipamt='floating-hourlyqpf',
             rawprecipprob='floating-probabilityofprecipitation',
             rawweather='weather',

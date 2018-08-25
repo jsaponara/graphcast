@@ -14,6 +14,7 @@ except ImportError:
 from gcst.util import missing
 
 class NoData(Exception): pass
+# todo mock this
 simulateNoData = False
 
 def getnewdata(zipc, lat, lon, dataurl, cacheData):
@@ -22,9 +23,9 @@ def getnewdata(zipc, lat, lon, dataurl, cacheData):
     if simulateNoData:
         xml=''
     if not xml:
-        # render frame around data, incl links to nws,
+        # render frame around data, incl links to NWS,
         #   but replace data with user-readable message
-        raise NoData('empty xml response from nws')
+        raise NoData('<a href="%(dataurl)s">empty xml response</a> from <a href="http://weather.gov">NWS</a>')
     if cacheData and zipc:
         if not os.access(appcachedir,O_RDONLY):
             makedirs(appcachedir)

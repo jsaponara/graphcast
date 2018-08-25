@@ -26,6 +26,7 @@ maxPrecipAmt=float(I.torrent)
 def normalizePrecipAmt(rawprecipamt):
     return [classifyPrecipAmt(amt)/maxPrecipAmt for amt in rawprecipamt] 
 
+# todo two sep funcs?
 def sumPrecipToString(amts):
     total=sum([y for y in amts if y is not missing])
     roundedtotal=round(total,1)

@@ -40,6 +40,10 @@ def fcstgfx(location):
     global dataObjs
     dataObjs, npanes = processConfig(dataObjs)
     data, startTimes, slots = getFcstData(location, cacheData)
+
+    # todo
+    #with open('xx','w') as f:
+        #f.write( data.keys())
     
     if data:
         nightwidthfactor=0.5  # nights are half the width of days [unfolded; folded, they are the same width]

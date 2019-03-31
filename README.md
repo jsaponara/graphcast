@@ -11,4 +11,4 @@
 
 ### demo
 
-- https://websitedeli.com/wsgi/fcst/?loc=08540
+- https://saponara.us/wsgi/fcst/?loc=08540
